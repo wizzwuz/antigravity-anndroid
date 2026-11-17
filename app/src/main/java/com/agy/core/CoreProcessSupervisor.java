@@ -116,6 +116,8 @@ public final class CoreProcessSupervisor {
                 CoreLogWriter.closeQuietly(log);
                 log = null;
                 sleepInterruptible(delay);
+                com.agy.runtime.RuntimeConfig.resetResolvedPort();
+                com.agy.runtime.RuntimeConfig.killStaleCoreProcesses();
             } catch (Exception e) {
                 if (stopping) {
                     break;
@@ -149,6 +151,9 @@ public final class CoreProcessSupervisor {
                 return false;
             }
             if (CoreReadyProbe.probeOnce(port)) {
+                if (!ProcessUtils.isAlive(proc)) {
+                    continue;
+                }
                 CoreRuntimeState.serverUrl = CoreUrl.startUrl(port, csrf);
                 CoreRuntimeState.lastError = null;
                 CoreRuntimeState.restarting = false;

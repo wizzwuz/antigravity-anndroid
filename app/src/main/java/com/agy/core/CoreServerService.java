@@ -67,6 +67,8 @@ public final class CoreServerService extends Service {
         CoreRuntimeState.serverUrl = null;
         CoreRuntimeState.lastError = null;
         CoreRuntimeState.restarting = false;
+        com.agy.runtime.RuntimeConfig.killStaleCoreProcesses();
+        com.agy.runtime.RuntimeConfig.resetResolvedPort();
         super.onDestroy();
     }
 

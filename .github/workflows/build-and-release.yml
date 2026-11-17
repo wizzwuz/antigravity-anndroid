@@ -153,6 +153,6 @@ jobs:
 
             | Package | Description |
             | :--- | :--- |
-            | **`antigravity.apk`** | Standard production release with native bionic engine (com.agy.wizzwuz, port 45157) |
-            | **`antigravity-region-bypass.apk`** | Region bypass edition with account eligibility check bypass (com.agy.wizzwuz, port 45157) |
+            | **`antigravity.apk`** | Standard production release with native bionic engine (com.agy.wizzwuz, port 45167) |
+            | **`antigravity-region-bypass.apk`** | Region bypass edition with account eligibility check bypass (com.agy.wizzwuz, port 45167) |
             | **`SHA256SUMS.txt`** | Cryptographic checksums for package integrity verification |

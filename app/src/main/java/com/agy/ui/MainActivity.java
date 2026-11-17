@@ -214,6 +214,8 @@ public class MainActivity extends Activity
         splashDeadline = System.currentTimeMillis() + SPLASH_TIMEOUT_MS;
         splash.showLoading();
         CoreServiceLauncher.stop(this);
+        com.agy.runtime.RuntimeConfig.resetResolvedPort();
+        com.agy.runtime.RuntimeConfig.killStaleCoreProcesses();
         try {
             java.io.File marker = new java.io.File(runtimeManager.getRuntimeDir(), com.agy.runtime.RuntimePaths.RUNTIME_MARKER);
             if (marker.exists()) {

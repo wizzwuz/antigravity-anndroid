@@ -22,10 +22,21 @@ public final class AppLifecycle {
     }
 
     public static void trimMemory(int level, Handler handler, WebViewHost host) {
-        // Intentionally do not invoke deprecated WebView.freeMemory() on background trim:
-        // switching to an external browser (e.g. OAuth login) or another app triggers
-        // TRIM_MEMORY_MODERATE on Android/HyperOS, and freeMemory() purges active WebView
-        // caches/pipes and stalls live agent state streams on resume.
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            System.gc();
+        }
+        if (host != null && host.getWebView() != null) {
+            try {
+                host.getWebView().evaluateJavascript(
+                        "(function(){ try { window.dispatchEvent(new CustomEvent('agy:trim-memory', {detail: " + level + "})); } catch(e){} })();",
+                        null);
+            } catch (Throwable ignored) {}
+        }
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
+            if (host != null && host.getWebView() != null) {
+                WebViewLifecycle.freeMemory(host.getWebView());
+            }
+        }
     }
 
     public static void destroy(Handler handler) {

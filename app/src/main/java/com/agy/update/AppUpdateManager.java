@@ -754,8 +754,7 @@ public final class AppUpdateManager {
             if (iconId == 0) {
                 iconId = android.R.drawable.stat_sys_download_done;
             }
-            Intent tapIntent = new Intent(appContext, MainActivity.class);
-            tapIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            Intent tapIntent = com.agy.gateway.handlers.NotificationHandler.createLaunchIntent(appContext, null);
             tapIntent.putExtra(MainActivity.EXTRA_APPLY_OTA_UPDATE, true);
             int piFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                     ? (PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)

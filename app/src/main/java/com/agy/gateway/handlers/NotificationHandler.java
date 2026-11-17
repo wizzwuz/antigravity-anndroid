@@ -55,6 +55,9 @@ public final class NotificationHandler {
             NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (manager == null) return;
 
+            // 0. Antigravity Core Running
+            com.agy.core.ForegroundNotification.initChannel(context);
+
             // 1. Antigravity Task Progress: persistent running tasks across conversations
             NotificationChannel progressChannel = new NotificationChannel(
                     CHANNEL_TASK_PROGRESS,
@@ -178,15 +181,7 @@ public final class NotificationHandler {
         }
 
         // PendingIntent: tapping notification opens the associated conversation in MainActivity
-        Intent intent = new Intent(context, com.agy.ui.MainActivity.class);
-        intent.setAction("com.agy.action.OPEN_CONVERSATION");
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        if (cascadeId != null && !cascadeId.trim().isEmpty()) {
-            String cid = cascadeId.trim();
-            intent.putExtra("cascade_id", cid);
-            intent.setData(android.net.Uri.parse("agy://conversation/" + cid));
-        }
-
+        Intent intent = createLaunchIntent(context, cascadeId);
         int pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             pendingFlags |= PendingIntent.FLAG_IMMUTABLE;
@@ -217,6 +212,33 @@ public final class NotificationHandler {
         }
     }
 
+    public static Intent createLaunchIntent(Context context, String cascadeId) {
+        Intent intent = null;
+        if (com.agy.ui.MainActivity.activeActivity != null) {
+            intent = new Intent(context, com.agy.ui.MainActivity.activeActivity.getClass());
+        } else {
+            try {
+                intent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+            } catch (Throwable ignored) {
+            }
+            if (intent == null) {
+                intent = new Intent(context, com.agy.ui.MainActivity.class);
+            }
+        }
+        intent.setPackage(context.getPackageName());
+        if (cascadeId != null && !cascadeId.trim().isEmpty()) {
+            String cid = cascadeId.trim();
+            intent.setAction("com.agy.action.OPEN_CONVERSATION");
+            intent.putExtra("cascade_id", cid);
+            intent.setData(android.net.Uri.parse("agy://conversation/" + cid));
+        } else {
+            intent.setAction(Intent.ACTION_MAIN);
+            intent.addCategory(Intent.CATEGORY_LAUNCHER);
+        }
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        return intent;
+    }
+
     public static void cancel(Context context, String tag, int id) {
         if (context == null || tag == null) return;
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -240,6 +262,8 @@ public final class NotificationHandler {
             manager.cancel(tag, 0);
             manager.cancel("cascade_prog_" + cid, 0);
             manager.cancel("cascade_done_" + cid, 0);
+            manager.cancel(progId);
+            manager.cancel(doneId);
         } catch (Throwable ignored) {}
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -248,9 +272,14 @@ public final class NotificationHandler {
                 if (active != null) {
                     for (StatusBarNotification sbn : active) {
                         String sbnTag = sbn.getTag();
+                        int sbnId = sbn.getId();
                         if (sbnTag != null) {
                             if (sbnTag.equals(tag) || sbnTag.equals("cascade_prog_" + cid) || (cid.length() > 0 && sbnTag.contains(cid))) {
-                                manager.cancel(sbnTag, sbn.getId());
+                                manager.cancel(sbnTag, sbnId);
+                            }
+                        } else {
+                            if (sbnId == progId || sbnId == doneId) {
+                                manager.cancel(null, sbnId);
                             }
                         }
                     }
@@ -270,10 +299,18 @@ public final class NotificationHandler {
                 if (active != null) {
                     for (StatusBarNotification sbn : active) {
                         String sbnTag = sbn.getTag();
+                        int sbnId = sbn.getId();
+                        boolean isProgress = false;
                         if (sbnTag != null && sbnTag.startsWith("cascade_prog_")) {
-                            manager.cancel(sbnTag, sbn.getId());
-                        } else if (CHANNEL_TASK_PROGRESS.equals(sbn.getNotification().getChannelId())) {
-                            manager.cancel(sbnTag, sbn.getId());
+                            isProgress = true;
+                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                                && CHANNEL_TASK_PROGRESS.equals(sbn.getNotification().getChannelId())) {
+                            isProgress = true;
+                        } else if (sbnId >= 10000 && sbnId < 60000) {
+                            isProgress = true;
+                        }
+                        if (isProgress) {
+                            manager.cancel(sbnTag, sbnId);
                         }
                     }
                 }
@@ -311,6 +348,7 @@ public final class NotificationHandler {
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             JSONObject obj = new JSONObject();
+            obj.put("core_enabled", prefs.getBoolean(com.agy.core.ForegroundNotification.PREF_CORE_ENABLED, true));
             obj.put("progress_enabled", prefs.getBoolean(PREF_PROGRESS_ENABLED, true));
             obj.put("alerts_enabled", prefs.getBoolean(PREF_ALERTS_ENABLED, true));
             return obj.toString();
@@ -324,7 +362,13 @@ public final class NotificationHandler {
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             prefs.edit().putBoolean(key, value).apply();
-            if (PREF_PROGRESS_ENABLED.equals(key) && !value) {
+            if (com.agy.core.ForegroundNotification.PREF_CORE_ENABLED.equals(key)) {
+                if (value) {
+                    com.agy.core.ForegroundNotification.update(context);
+                } else {
+                    com.agy.core.ForegroundNotification.hide(context);
+                }
+            } else if (PREF_PROGRESS_ENABLED.equals(key) && !value) {
                 cancelAllProgressNotifications(context);
             }
             return true;

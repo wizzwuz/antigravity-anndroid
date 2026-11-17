@@ -40,7 +40,13 @@ if (typeof window !== "undefined") {
       try {
         if (window.Android && typeof window.Android.cancelNotification === "function") {
           var tag = (this.options && this.options.tag) || "agy_notify";
-          window.Android.cancelNotification(tag, 0);
+          var cid = (this.options && this.options.payload && this.options.payload.cascadeId) || (this.options && this.options.cascadeId) || "";
+          if (cid) {
+            window.Android.cancelNotification("cascade_prog_" + cid, 0);
+            window.Android.cancelNotification("cascade_done_" + cid, 0);
+          } else {
+            window.Android.cancelNotification(tag, 0);
+          }
         }
       } catch (_) {}
       try { this.onclose && this.onclose(); } catch (_) {}
@@ -53,6 +59,14 @@ if (typeof window !== "undefined") {
   })();
 
   window.__agyPendingCascadeId = window.__agyPendingCascadeId || null;
+  try {
+    if (!window.__agyPendingCascadeId && window.Android && typeof window.Android.getPendingCascadeId === "function") {
+      var _initialCid = window.Android.getPendingCascadeId();
+      if (_initialCid) {
+        window.__agyPendingCascadeId = _initialCid;
+      }
+    }
+  } catch (_) {}
   if (typeof window.__agyOpenConversation !== "function") {
     window.__agyOpenConversation = function (cid) {
       if (!cid) return;

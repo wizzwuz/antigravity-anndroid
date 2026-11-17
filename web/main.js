@@ -3113,17 +3113,13 @@ _activeTasks.add(rCid);
 window.Android.postNotification("task_progress","Antigravity Task Progress","Running task in "+(rSumm.title||"conversation"),rCid,!0,-1);
 }
 }else{
-if(_activeTasks.has(rCid)){
 _activeTasks.delete(rCid);
-window.Android.cancelNotification("cascade_prog_"+rCid,0);
-}
+try{window.Android&&window.Android.cancelNotification&&window.Android.cancelNotification("cascade_prog_"+rCid,0);}catch(_){}
 }
 }
 for(let delCid of (n||[])){
-if(_activeTasks.has(delCid)){
 _activeTasks.delete(delCid);
-window.Android.cancelNotification("cascade_prog_"+delCid,0);
-}
+try{window.Android&&window.Android.cancelNotification&&window.Android.cancelNotification("cascade_prog_"+delCid,0);}catch(_){}
 }
 }
 }catch(_){}
@@ -9714,6 +9710,7 @@ B.createElement("span",null,"Models & Usage"),B.createElement(sz,{variant:"ghost
 {className:"text-secondary-foreground py-2 px-3"},"For Antigravity Business consumption options, see"," ",B.createElement("a",{href:"https://antigravity.google/docs/enterprise",className:"text-link hover:underline",target:"_blank",rel:"noopener noreferrer"},"documentation"),"."))):B.createElement("div",{className:"flex flex-col gap-4"},D()))};function bLb(){var a=Hk(),b=Jk("agentSoundVolume")??100,c=(0,B.useCallback)(l=>{a.setPrefValue("agentSoundVolume",l)},[a]),{value:d,setValue:f,save:g,onFocus:h,onBlur:k}=nR(String(b),c);b=Number(d);return B.createElement(KQ,{label:"Volume",description:"Set the volume of agent sounds.",rightElement:B.createElement("div",{className:"flex items-center gap-3"},B.createElement("input",{"aria-label":"Chime volume",type:"range",min:"0",max:"100",value:b,onChange:l=>{f(l.target.value);g(Number(l.target.value))},
 onFocus:h,onBlur:k,className:"appearance-none cursor-pointer max-w-[120px] h-1.5 rounded-full outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary",style:{background:`linear-gradient(to right, var(--primary) ${b}%, var(--secondary) ${b}%)`}}),B.createElement("span",{className:"text-sm w-8 font-medium"},b,"%"))})}
 var NotificationSettingsScreen=()=>{
+var [coreEnabled,setCoreEnabled]=(0,B.useState)(!0);
 var [progressEnabled,setProgressEnabled]=(0,B.useState)(!0);
 var [alertsEnabled,setAlertsEnabled]=(0,B.useState)(!0);
 var [testStatus,setTestStatus]=(0,B.useState)("");
@@ -9721,11 +9718,17 @@ var [testStatus,setTestStatus]=(0,B.useState)("");
 try{
 if(typeof window!=="undefined"&&window.Android&&typeof window.Android.getNotificationSettings==="function"){
 var s=JSON.parse(window.Android.getNotificationSettings()||"{}");
+if(s.core_enabled!==void 0)setCoreEnabled(!!s.core_enabled);
 if(s.progress_enabled!==void 0)setProgressEnabled(!!s.progress_enabled);
 if(s.alerts_enabled!==void 0)setAlertsEnabled(!!s.alerts_enabled);
 }
 }catch(_){}
 },[]);
+var onToggleCore=(e)=>{
+var v=e.target.checked;
+setCoreEnabled(v);
+try{window.Android&&window.Android.setNotificationSetting&&window.Android.setNotificationSetting("core_enabled",v)}catch(_){}
+};
 var onToggleProgress=(e)=>{
 var v=e.target.checked;
 setProgressEnabled(v);
@@ -9765,6 +9768,12 @@ return B.createElement(HQ,{title:"Notification Settings",description:"Configure 
 B.createElement("div",{className:"space-y-6 max-w-2xl pb-8 p-1"},
 testStatus&&B.createElement("div",{className:"p-3 rounded-xl bg-primary/10 border border-primary/20 text-xs text-primary font-medium"},testStatus),
 B.createElement("div",{className:"space-y-4"},
+B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},
+B.createElement("div",{className:"flex items-start justify-between gap-3"},
+B.createElement("div",{className:"space-y-0.5"},
+B.createElement("div",{className:"font-semibold text-base text-foreground"},"Antigravity Core Running"),
+B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},"An ongoing notification showing that the background Antigravity core language server is active.")),
+B.createElement("input",{type:"checkbox",checked:coreEnabled,onChange:onToggleCore,className:"h-5 w-5 rounded border-border accent-primary cursor-pointer mt-1"}))),
 B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},
 B.createElement("div",{className:"flex items-start justify-between gap-3"},
 B.createElement("div",{className:"space-y-0.5"},
@@ -18362,7 +18371,7 @@ function(a){return eI({getParentRoute:()=>a,path:"/terminal-standalone",validate
 function pad(a){var b={};for(let [f,g]of new URLSearchParams(a)){a=f;let h=g;try{b[a]=oad(h)}catch{b[a]=h}}var {section:c,...d}=b;return c===void 0?d:{...d,project:c}}var qad=fjb(oad);function rad(a){if(r7){r7.navigate({to:"/c/$cascadeId",params:{cascadeId:a}})}}window.__agyOpenConversation=function(a){if(!a)return;var c=String(a).trim();try{if(typeof window.__agySwitchConversation==="function"){window.__agySwitchConversation(c);}}catch(_){}try{if(r7){r7.navigate({to:"/c/$cascadeId",params:{cascadeId:c}});}else{window.__agyPendingCascadeId=c;}}catch(_){window.__agyPendingCascadeId=c;}};function sad(a){if(r7){let b=r7.options.basepath;b&&(a===b||a.startsWith(b+"/")||a.startsWith(b+"?"))&&(a=a.substring(b.length),a.startsWith("/")||(a="/"+a));r7.navigate({to:a,replace:!0})}};function tad(a){var b=kI(),c=av(),[d]=I8b(),f=Ek(oj().get("extensibility")?.showUISidecars)??!1,g=d.includes("scheduled"),h=f&&d.includes("plugins");return Ak(k=>{var l;if(l=a)a:{l=k.trajectorySummaries??ol;k=k.conversation.localLastViewedTimes;for(let m in l.indexes.serverUnread){let n=l.summaries[m];if((!n||n?.annotations?.pinned===!0||W2c(n,g,h))&&$kb(l,m,m===b,k[m],c)){l=!0;break a}}l=!1}return l})};var uad=()=>{var a=oj().get("faviconBadgeFeature"),b=tad(!!a);(0,B.useEffect)(()=>{a?.updateFavicon(b)},[b,a])};function vad(a){var b=QT(),c=B4();if(a){if(b=RT(b,a))return{title:b.title,sidecarId:b.sidecarId};if(c=c.find(d=>A4(d)===a))return{title:z4(c),mcpServerName:c.serverName}}};var wad=()=>{var a=kI(),b=b6(a);a=UY(a);var c=yl(a);a=JI();var d=SZc(),f=vad(d?a:void 0)?.title,{product:g}=xB(),h=oj().get("titleSyncFeature");(0,B.useEffect)(()=>{var k=[];f?k.push(f):(b&&k.push(b),c&&k.push(c));g?.nameShort&&k.push(g.nameShort);k=k.join(" - ");document.title=k;if(h)h.onTitleChange(k)},[f,b,c,g?.nameShort,h])};var xad=a=>{var {getAllSkills:b}=kt(),[c,d]=(0,B.useState)([]),[f,g]=(0,B.useState)(!1),[h,k]=(0,B.useState)(void 0),l=(0,B.useMemo)(()=>a,[a.join(",")]),m=(0,B.useCallback)(async()=>{var n=e,p=e;try{if(l.length!==0){g(!0);k(void 0);try{let q=p(await n(b(l)));d(q)}catch(q){p(),console.error("Error fetching available skills:",q),k(q instanceof Error?q:Error(String(q)))}finally{g(!1)}}}finally{n()}},[b,l]);(0,B.useEffect)(()=>{m()},[m]);return{skills:c,isLoading:f,error:h}};var yad={toString:()=>"{}",fromString:()=>({}),isEqual:()=>!0,MainHeader:()=>B.createElement(IV,{icon:{type:"googleSymbol",name:"receipt_long"},text:"Active Skills"}),Content:()=>{var a=ZY(),{skills:b,isLoading:c}=xad(a?[gg(a)]:[]);return c?B.createElement("div",{className:"flex items-center justify-center h-full text-secondary-foreground"},"Loading skills\u2026"):b.length===0?B.createElement("div",{className:"flex items-center justify-center h-full text-secondary-foreground"},"No skills available"):
 B.createElement("div",{className:"flex flex-col h-full overflow-y-auto"},B.createElement("div",{className:"flex flex-col gap-0.5 px-2 py-1.5 overflow-y-auto"},b.map((d,f)=>B.createElement("div",{key:f,className:"rounded px-1.5 py-1 hover:bg-muted transition-colors"},B.createElement("div",{className:"text-sm font-medium truncate"},d.name),d.description&&B.createElement("div",{className:"text-[11px] text-muted-foreground line-clamp-2 mt-0.5"},d.description)))))},hideFindInPane:!0};var zad=a=>{var b=(0,B.useRef)(a);b.current=a;var c=Ck(a.managerSyncedState.onboardingProvider),d=a.services.core.storageService,f=(0,B.useMemo)(()=>(new bna(a.featureManagerV2??{},{...wna(d),userCohort:a.config?.product?.isGoogleInternal?"google":"external"})).get("onboarding")?.enabled??!1,[a.featureManagerV2,a.config?.product?.isGoogleInternal,d]),g=(0,B.useMemo)(()=>({onboardingState:c.agentOnboardingState,hasOnboardingScreens:f}),[c.agentOnboardingState,f]),h=(0,B.useCallback)(({children:n})=>
 {var p=b.current;return B.createElement(Epa,{store:p.store},B.createElement(mLc,{...p},!p.hostSyncsUserStatus&&B.createElement(vSb,null),B.createElement(Fuc,{updateService:p.updateService,managerSyncedState:p.managerSyncedState,fileSystemProviders:p.fileSystemProviders,MermaidDiagramComponent:p.MermaidDiagramComponent,StatusBarComponent:p.StatusBarComponent,WebEffects:p.WebEffects,diagnosticsService:p.diagnosticsService,settingsSyncedState:p.settingsSyncedState},B.createElement(Huc,null),B.createElement(QZb,
-null),n)))},[]),k=(0,B.useMemo)(()=>{var n=a.routingConfig??{historyType:{kind:"memory",initialPath:"/"}};var p=a.routingConfig?.forceNew;if(r7&&!p)n=r7;else{b:switch(n.historyType.kind){case "hash":p=Ghb();break b;case "memory":p=Hhb({initialEntries:[n.historyType.initialPath??"/"]});break b;default:p=Fhb()}r7=n=new $jb({routeTree:nad,history:p,InnerWrap:h,context:W$c,basepath:n.basepath,parseSearch:pad,stringifySearch:qad});try{if(window.__agyPendingCascadeId){var _pendCid=window.__agyPendingCascadeId;window.__agyPendingCascadeId=null;setTimeout(()=>{window.__agyOpenConversation(_pendCid)},150);}}catch(_){}}return n},[a.routingConfig,h]);(0,B.useEffect)(()=>{k.invalidate()},[c.agentOnboardingState,
+null),n)))},[]),k=(0,B.useMemo)(()=>{var n=a.routingConfig??{historyType:{kind:"memory",initialPath:"/"}};var p=a.routingConfig?.forceNew;if(r7&&!p)n=r7;else{b:switch(n.historyType.kind){case "hash":p=Ghb();break b;case "memory":p=Hhb({initialEntries:[((typeof window!=="undefined"&&window.__agyPendingCascadeId)?("/c/"+window.__agyPendingCascadeId):(n.historyType.initialPath??"/"))]});break b;default:p=Fhb()}r7=n=new $jb({routeTree:nad,history:p,InnerWrap:h,context:W$c,basepath:n.basepath,parseSearch:pad,stringifySearch:qad});try{if(window.__agyPendingCascadeId){var _pendCid=window.__agyPendingCascadeId;window.__agyPendingCascadeId=null;setTimeout(()=>{window.__agyOpenConversation(_pendCid)},50);}}catch(_){}}return n},[a.routingConfig,h]);(0,B.useEffect)(()=>{k.invalidate()},[c.agentOnboardingState,
 k]);var l=k.state?.location?.pathname??"",m=l.replace(/\/$/,"");return vB(l)||vB(m)||!f||c.initialized!==!1?B.createElement(Ljb,{router:k,context:g,InnerWrap:h}):null};var Aad=({children:a})=>{var b=kI();b=j5(b)[0];var c=dZ(b),d=(0,B.useSyncExternalStore)(Ioc,Joc),f=(0,B.useMemo)(()=>{if(!d)return[];var l=new Set;d.activeDocument?.uri&&l.add(d.activeDocument.uri);d.otherDocuments?.forEach(m=>{m.uri&&l.add(m.uri)});return Array.from(l)},[d]),g=m4b(),h=(0,B.useMemo)(()=>{var l=new Set;for(let m of f)l.add(m);for(let m of g)l.add(m.item.id);return Array.from(l)},[f,g]),k=(0,B.useMemo)(()=>h.map(l=>{var m=Vb(E.ContextScopeItemSchema,{scopeItem:{case:"file",value:{absoluteUri:l}}});
 return new jOc(m,B.createElement(cZ,{uri:l,isDirectory:null}),c)}),[h,c]);b=(0,B.useMemo)(()=>({synthesizedRelevantOptions:k}),[k]);return B.createElement(kOc.Provider,{value:b},a)};var Bad=["view_file","list_dir","grep_search","find_by_name"];function Cad(a){return zO(a).trim().replace(/^\/btw(?:\s+|$)/i,"").trim()}function Dad(a,b){if(b.length===0)return a;var c=b[0];if(c.chunk.case!=="text")return[...a,...b];var d=a.length===0?c.chunk.value.replace(/^[ \t]+/,""):c.chunk.value;return d.length===0?[...a,...b.slice(1)]:d===c.chunk.value?[...a,...b]:[...a,Vb(E.TextOrScopeItemSchema,{chunk:{case:"text",value:d}}),...b.slice(1)]}
 function Ead(){return{availableTools:Bad,detectBtwCommand(a){for(var b=0;b<a.length;b++){var c=a[b];if(c.chunk.case==="item"){c=c.chunk.value.scopeItem;if(c.case==="recipe"){let d=c.value,f=d.recipeId;if(d.title==="btw"||f==="btw")return a=Dad(a.slice(0,b),a.slice(b+1)),{question:Cad(a),items:a}}if(c.case==="slashCommand"&&c.value.info?.name==="btw")return a=Dad(a.slice(0,b),a.slice(b+1)),{question:Cad(a),items:a}}}b=a.findIndex(d=>d.chunk.case==="text"&&d.chunk.value.trim().length>0);if(b!==-1&&

@@ -97,8 +97,7 @@ public final class NotificationBridge {
                 iconId = android.R.drawable.stat_notify_chat;
             }
 
-            Intent launchIntent = new Intent(app, MainActivity.class);
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            Intent launchIntent = com.agy.gateway.handlers.NotificationHandler.createLaunchIntent(app, null);
             int piFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                     ? (PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)
                     : PendingIntent.FLAG_UPDATE_CURRENT;

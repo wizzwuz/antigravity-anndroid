@@ -266,6 +266,12 @@ public class MainActivity extends Activity
         return null;
     }
 
+    public synchronized String consumePendingCascadeId() {
+        String cid = pendingCascadeId;
+        pendingCascadeId = null;
+        return cid;
+    }
+
     /** Idempotent; called by AndroidBridge.onUiReady() on the main thread. */
     public void dismissSplash() {
         Log.i(TAG, "dismissSplash: fading out splashView (280ms)");
@@ -273,18 +279,7 @@ public class MainActivity extends Activity
         if (pendingCascadeId != null) {
             final String cid = pendingCascadeId;
             pendingCascadeId = null;
-            handler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    openConversationInWebView(cid);
-                }
-            }, 300);
-            handler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    openConversationInWebView(cid);
-                }
-            }, 750);
+            openConversationInWebView(cid);
         }
     }
 
@@ -293,24 +288,29 @@ public class MainActivity extends Activity
         final String cid = cascadeId.trim();
         pendingCascadeId = cid;
         if (webViewHost != null && webViewHost.getWebView() != null) {
+            final WebView wv = webViewHost.getWebView();
             final Runnable openTask = new Runnable() {
                 @Override
                 public void run() {
                     if (webViewHost == null || webViewHost.getWebView() == null) return;
                     String jsArg = org.json.JSONObject.quote(cid);
                     String script = "(function() {" +
-                            "  if (typeof window.__agyOpenConversation === 'function') {" +
-                            "    window.__agyOpenConversation(" + jsArg + ");" +
-                            "  } else {" +
-                            "    window.__agyPendingCascadeId = " + jsArg + ";" +
-                            "  }" +
+                            "  try {" +
+                            "    if (typeof window.__agyOpenConversation === 'function') {" +
+                            "      window.__agyOpenConversation(" + jsArg + ");" +
+                            "    } else {" +
+                            "      window.__agyPendingCascadeId = " + jsArg + ";" +
+                            "    }" +
+                            "  } catch(e) {}" +
                             "})();";
-                    webViewHost.getWebView().evaluateJavascript(script, null);
+                    wv.evaluateJavascript(script, null);
                 }
             };
-            webViewHost.getWebView().post(openTask);
-            handler.postDelayed(openTask, 350);
-            handler.postDelayed(openTask, 800);
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                openTask.run();
+            } else {
+                wv.post(openTask);
+            }
         }
     }
 
@@ -412,14 +412,14 @@ public class MainActivity extends Activity
     }
 
     private void syncForegroundNotificationIfPermitted() {
-        if (notificationPermissionSynced || Build.VERSION.SDK_INT < 33) {
-            return;
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                    != PackageManager.PERMISSION_GRANTED) {
+                return;
+            }
         }
-        if (checkSelfPermission("android.permission.POST_NOTIFICATIONS")
-                == PackageManager.PERMISSION_GRANTED) {
-            notificationPermissionSynced = true;
-            startCoreService();
-        }
+        notificationPermissionSynced = true;
+        com.agy.core.ForegroundNotification.update(this);
     }
 
     private void requestStartupRuntimePermissionsIfNeeded() {

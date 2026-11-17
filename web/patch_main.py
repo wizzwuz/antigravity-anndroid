@@ -499,17 +499,23 @@ def patch_convo_switcher(content):
     )
     content = must_replace(content, old_rad, new_rad, "rad_open_conversation_global")
 
-    # 3. Hook router creation in zad to flush pending cascade ID
-    old_zad_router = "r7=n=new $jb({routeTree:nad,history:p,InnerWrap:h,context:W$c,basepath:n.basepath,parseSearch:pad,stringifySearch:qad})"
+    # 3. Hook router creation in zad to flush pending cascade ID and start on initial cascade
+    old_zad_router = 'r7=n=new $jb({routeTree:nad,history:p,InnerWrap:h,context:W$c,basepath:n.basepath,parseSearch:pad,stringifySearch:qad})'
     new_zad_router = (
         'r7=n=new $jb({routeTree:nad,history:p,InnerWrap:h,context:W$c,basepath:n.basepath,parseSearch:pad,stringifySearch:qad});'
         'try{if(window.__agyPendingCascadeId){'
         'var _pendCid=window.__agyPendingCascadeId;'
         'window.__agyPendingCascadeId=null;'
-        'setTimeout(()=>{window.__agyOpenConversation(_pendCid)},150);'
+        'setTimeout(()=>{window.__agyOpenConversation(_pendCid)},50);'
         '}}catch(_){}'
     )
-    content = must_replace(content, old_zad_router, new_zad_router, "zad_flush_pending_cascade_on_router_init")
+    if old_zad_router in content:
+        content = must_replace(content, old_zad_router, new_zad_router, "zad_flush_pending_cascade_on_router_init")
+
+    old_mem_router = 'case "memory":p=Hhb({initialEntries:[n.historyType.initialPath??"/"]});break b;'
+    new_mem_router = 'case "memory":p=Hhb({initialEntries:[((typeof window!=="undefined"&&window.__agyPendingCascadeId)?("/c/"+window.__agyPendingCascadeId):(n.historyType.initialPath??"/"))]});break b;'
+    if old_mem_router in content:
+        content = must_replace(content, old_mem_router, new_mem_router, "zad_initial_memory_path_cascade")
 
     return content
 
@@ -680,17 +686,13 @@ _activeTasks.add(rCid);
 window.Android.postNotification("task_progress","Antigravity Task Progress","Running task in "+(rSumm.title||"conversation"),rCid,!0,-1);
 }
 }else{
-if(_activeTasks.has(rCid)){
 _activeTasks.delete(rCid);
-window.Android.cancelNotification("cascade_prog_"+rCid,0);
-}
+try{window.Android&&window.Android.cancelNotification&&window.Android.cancelNotification("cascade_prog_"+rCid,0);}catch(_){}
 }
 }
 for(let delCid of (n||[])){
-if(_activeTasks.has(delCid)){
 _activeTasks.delete(delCid);
-window.Android.cancelNotification("cascade_prog_"+delCid,0);
-}
+try{window.Android&&window.Android.cancelNotification&&window.Android.cancelNotification("cascade_prog_"+delCid,0);}catch(_){}
 }
 }
 }catch(_){}
@@ -729,6 +731,7 @@ def patch_notification_settings_clean(content):
     old_clb = 'var cLb=()=>oj().get("notificationsSettings")??!1?B.createElement(HQ,{title:"Notifications",description:"Manage your notification preferences."},B.createElement(LQ,{title:"General"},B.createElement(JQ,null,B.createElement(MR,{settingKey:"enableNotificationsForSpecialEvents"}))),B.createElement(LQ,{title:"Sound"},B.createElement(JQ,null,B.createElement(MR,{settingKey:"enableSoundsForSpecialEvents"}),B.createElement(bLb,null)))):null;'
 
     notification_settings_comp = """var NotificationSettingsScreen=()=>{
+var [coreEnabled,setCoreEnabled]=(0,B.useState)(!0);
 var [progressEnabled,setProgressEnabled]=(0,B.useState)(!0);
 var [alertsEnabled,setAlertsEnabled]=(0,B.useState)(!0);
 var [testStatus,setTestStatus]=(0,B.useState)("");
@@ -736,11 +739,17 @@ var [testStatus,setTestStatus]=(0,B.useState)("");
 try{
 if(typeof window!=="undefined"&&window.Android&&typeof window.Android.getNotificationSettings==="function"){
 var s=JSON.parse(window.Android.getNotificationSettings()||"{}");
+if(s.core_enabled!==void 0)setCoreEnabled(!!s.core_enabled);
 if(s.progress_enabled!==void 0)setProgressEnabled(!!s.progress_enabled);
 if(s.alerts_enabled!==void 0)setAlertsEnabled(!!s.alerts_enabled);
 }
 }catch(_){}
 },[]);
+var onToggleCore=(e)=>{
+var v=e.target.checked;
+setCoreEnabled(v);
+try{window.Android&&window.Android.setNotificationSetting&&window.Android.setNotificationSetting("core_enabled",v)}catch(_){}
+};
 var onToggleProgress=(e)=>{
 var v=e.target.checked;
 setProgressEnabled(v);
@@ -780,6 +789,12 @@ return B.createElement(HQ,{title:"Notification Settings",description:"Configure 
 B.createElement("div",{className:"space-y-6 max-w-2xl pb-8 p-1"},
 testStatus&&B.createElement("div",{className:"p-3 rounded-xl bg-primary/10 border border-primary/20 text-xs text-primary font-medium"},testStatus),
 B.createElement("div",{className:"space-y-4"},
+B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},
+B.createElement("div",{className:"flex items-start justify-between gap-3"},
+B.createElement("div",{className:"space-y-0.5"},
+B.createElement("div",{className:"font-semibold text-base text-foreground"},"Antigravity Core Running"),
+B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},"An ongoing notification showing that the background Antigravity core language server is active.")),
+B.createElement("input",{type:"checkbox",checked:coreEnabled,onChange:onToggleCore,className:"h-5 w-5 rounded border-border accent-primary cursor-pointer mt-1"}))),
 B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},
 B.createElement("div",{className:"flex items-start justify-between gap-3"},
 B.createElement("div",{className:"space-y-0.5"},

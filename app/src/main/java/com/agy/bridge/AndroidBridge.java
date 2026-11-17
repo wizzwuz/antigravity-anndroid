@@ -238,6 +238,14 @@ public final class AndroidBridge {
     }
 
     @JavascriptInterface
+    public String getPendingCascadeId() {
+        if (com.agy.ui.MainActivity.activeActivity != null) {
+            return com.agy.ui.MainActivity.activeActivity.consumePendingCascadeId();
+        }
+        return null;
+    }
+
+    @JavascriptInterface
     public void openNotificationSettingsAuth(String authToken) {
         if (!isAuthorized(authToken)) return;
         com.agy.gateway.handlers.NotificationHandler.openNotificationSettings(appContext);

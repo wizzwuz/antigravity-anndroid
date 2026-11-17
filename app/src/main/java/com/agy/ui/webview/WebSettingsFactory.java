@@ -56,10 +56,10 @@ public final class WebSettingsFactory {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             settings.setSafeBrowsingEnabled(false);
         }
-        // Offscreen preraster: keeps tiles GPU-ready off the main thread (API 23+).
+        // Offscreen preraster is disabled to prevent huge GPU/RAM allocation on long chat transcripts and logs.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
-                settings.setOffscreenPreRaster(true);
+                settings.setOffscreenPreRaster(false);
             } catch (Exception e) {
                 Log.w(TAG, "setOffscreenPreRaster failed", e);
             }

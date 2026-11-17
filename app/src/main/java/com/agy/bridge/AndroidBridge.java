@@ -227,6 +227,17 @@ public final class AndroidBridge {
     }
 
     @JavascriptInterface
+    public void cancelAllProgressNotificationsAuth(String authToken) {
+        if (!isAuthorized(authToken)) return;
+        com.agy.gateway.handlers.NotificationHandler.cancelAllProgressNotifications(appContext);
+    }
+
+    @JavascriptInterface
+    public void cancelAllProgressNotifications() {
+        com.agy.gateway.handlers.NotificationHandler.cancelAllProgressNotifications(appContext);
+    }
+
+    @JavascriptInterface
     public void openNotificationSettingsAuth(String authToken) {
         if (!isAuthorized(authToken)) return;
         com.agy.gateway.handlers.NotificationHandler.openNotificationSettings(appContext);

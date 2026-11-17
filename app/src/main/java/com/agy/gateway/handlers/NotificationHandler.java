@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.provider.Settings;
+import android.service.notification.StatusBarNotification;
 import android.util.Log;
 
 import org.json.JSONObject;
@@ -141,10 +142,7 @@ public final class NotificationHandler {
                 actualTag = "cascade_done_" + cid;
                 actualId = 60000 + hashOffset;
                 // Automatically cancel any active progress notification for this conversation
-                try {
-                    manager.cancel("cascade_prog_" + cid, 10000 + hashOffset);
-                    manager.cancel("cascade_prog_" + cid, 0);
-                } catch (Throwable ignored) {}
+                cancel(context, "cascade_prog_" + cid, 10000 + hashOffset);
             }
         } else {
             actualTag = tag != null && !tag.isEmpty() ? tag : "agy_notification";
@@ -218,16 +216,66 @@ public final class NotificationHandler {
     }
 
     public static void cancel(Context context, String tag, int id) {
+        if (context == null || tag == null) return;
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager == null) return;
+
+        String cid = tag.replaceFirst("^cascade_(prog|done)_", "");
+        int hashOffset = Math.abs(cid.hashCode() % 50000);
+        int progId = 10000 + hashOffset;
+        int doneId = 60000 + hashOffset;
+
+        try {
+            manager.cancel(tag, progId);
+            manager.cancel(tag, doneId);
+            manager.cancel("cascade_prog_" + cid, progId);
+            manager.cancel("cascade_done_" + cid, doneId);
+            if (id > 0) {
+                manager.cancel(tag, id);
+                manager.cancel("cascade_prog_" + cid, id);
+                manager.cancel("cascade_done_" + cid, id);
+            }
+            manager.cancel(tag, 0);
+            manager.cancel("cascade_prog_" + cid, 0);
+            manager.cancel("cascade_done_" + cid, 0);
+        } catch (Throwable ignored) {}
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                StatusBarNotification[] active = manager.getActiveNotifications();
+                if (active != null) {
+                    for (StatusBarNotification sbn : active) {
+                        String sbnTag = sbn.getTag();
+                        if (sbnTag != null) {
+                            if (sbnTag.equals(tag) || sbnTag.equals("cascade_prog_" + cid) || (cid.length() > 0 && sbnTag.contains(cid))) {
+                                manager.cancel(sbnTag, sbn.getId());
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    public static void cancelAllProgressNotifications(Context context) {
         if (context == null) return;
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
 
-        if (tag != null && tag.startsWith("cascade_")) {
-            int cancelId = id > 0 ? id : 10000 + Math.abs(tag.hashCode() % 50000);
-            manager.cancel(tag, cancelId);
-            manager.cancel(tag, 0);
-        } else {
-            manager.cancel(tag != null ? tag : "agy_notification", id);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                StatusBarNotification[] active = manager.getActiveNotifications();
+                if (active != null) {
+                    for (StatusBarNotification sbn : active) {
+                        String sbnTag = sbn.getTag();
+                        if (sbnTag != null && sbnTag.startsWith("cascade_prog_")) {
+                            manager.cancel(sbnTag, sbn.getId());
+                        } else if (CHANNEL_TASK_PROGRESS.equals(sbn.getNotification().getChannelId())) {
+                            manager.cancel(sbnTag, sbn.getId());
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
         }
     }
 
@@ -274,6 +322,9 @@ public final class NotificationHandler {
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             prefs.edit().putBoolean(key, value).apply();
+            if (PREF_PROGRESS_ENABLED.equals(key) && !value) {
+                cancelAllProgressNotifications(context);
+            }
             return true;
         } catch (Throwable t) {
             return false;

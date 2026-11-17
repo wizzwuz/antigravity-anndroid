@@ -3019,8 +3019,9 @@ selectedAgentScript:g?Yt(vc(J.AgentScriptItemSchema,g)):void 0})),queryFn:async(
 language:c})))}}catch(h){return g(),{error:zn(h)}}}finally{f()}}})})}),nQa=bu.useGetTokenizedLinesQuery;var cu=Ln({reducerPath:"trajectoryFileDiffsApi",baseQuery:Kn(),endpoints:a=>({getConversationFileDiffs:a.query({serializeQueryArgs:Wq(b=>b.conversationId),forceRefetch:({currentArg:b,previousArg:c})=>b?.fetchVersion!==c?.fetchVersion,queryFn:async({conversationId:b,fetch:c})=>{var d=e,f=e;try{try{return{data:f(await d(c({conversationId:b})))}}catch(g){return f(),{error:zn(g)}}}finally{d()}}})})}),oQa=cu.useLazyGetConversationFileDiffsQuery;var pQa=Uj("conversationViewing/start"),qQa=Uj("conversationViewing/viewChanged"),rQa=Uj("conversationViewing/windowFocusChanged");
 function sQa(){var a,b,c=!0,d=f=>{if(a){var g=a.updateConversationAnnotations,h=a.recordError,k=a.getStartingConversationIds,l=k();f=f.filter(m=>m!==void 0&&!l.includes(m));f.length!==0&&g(f,Vb(uf.ConversationAnnotationsSchema,{lastUserViewTime:Xe(new Date)}),!0).catch(m=>{ida(m)?console.warn("Conversation trajectory not found, skipping annotation update:",m):h(xg.CONVERSATION_UPDATE_ANNOTATIONS_FAILED,m)})}};return()=>f=>g=>{if(pQa.match(g))a=g.payload;else if(rQa.match(g)){var h=c;c=g.payload;!h&&
 c&&d([b])}else if(qQa.match(g)){var k=g.payload;h=k.cascadeId;k=k.battleId;let l=b;l!==h&&(b=h,d([k!==void 0&&l===k?void 0:l,c?h:void 0]))}return f(g)}};function tQa(a,b,c){for(let d of b)if(d.status===J.CascadeRunStatus.RUNNING||d.status===J.CascadeRunStatus.BUSY||d.hasActiveChildren)for(let f of d.waitingSteps)b=`${d.trajectoryId}-${f.stepIndex}`,a.has(b)||(a.add(b),c({step:f,summary:d}))}function uQa(a,b,c){var d=[];for(let [f,g]of b){b=f;let h=g;h.notFullyIdle?a.add(b):a.delete(b)&&(h.trajectoryMetadata?.parentConversationId||d.push([b,h]))}for(let f of c)a.delete(f);return d};var vQa=Uj("trajectorySummaries/startOsConversationNotifications",(a,b,c={},d)=>({payload:{sendNotification:a,appName:b,soundFiles:c,playSound:d}}));function wQa(a){var b=a.toLowerCase();return b.startsWith("antigravity")?"Antigravity":b.startsWith("jetski")?"Jetski":a}
-function xQa(){/*__agyTaskProgressAlertsInjected*/
+function xQa(){/*__agyTaskProgressAlertsInjected_v2*/
 var a=new Set,b=new Set,c,d="Antigravity",f={},g,
+_activeTasks=new Set,
 h=l=>{
 var m=new Map,n=[];
 for(let [p,q]of l)l=q,m.set(l,p),n.push(l);
@@ -3060,6 +3061,7 @@ k=l=>{
 for(let [m,n]of l){
 l=m;
 let p=n;
+_activeTasks.delete(l);
 try{
 if(typeof window!=="undefined"&&window.Android&&typeof window.Android.cancelNotification==="function"){
 window.Android.cancelNotification("cascade_prog_"+l,0);
@@ -3089,6 +3091,11 @@ p=pl(l.getState());
 p=Object.entries(p).filter(([,v])=>!v.trajectoryMetadata?.sourceMetadata?.hideFromConversationList);
 uQa(b,p,[]);
 h(p);
+try{
+if(typeof window!=="undefined"&&window.Android&&typeof window.Android.cancelAllProgressNotifications==="function"){
+window.Android.cancelAllProgressNotifications();
+}
+}catch(_){}
 return m(n)
 }
 if(ml.match(n)){
@@ -3097,11 +3104,25 @@ q=n.payload;
 n=q.deletes;
 q=q.updates.filter(([,t])=>il(t.source)&&!t.trajectoryMetadata?.sourceMetadata?.hideFromConversationList);
 try{
-if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"){
+if(typeof window!=="undefined"&&window.Android){
 for(let [rCid,rSumm] of q){
-if(rSumm && (rSumm.notFullyIdle || rSumm.status===J.CascadeRunStatus.RUNNING || rSumm.status===1)){
-var rTitle="Antigravity Task Progress",rMsg="Running task in "+(rSumm.title||"conversation");
-window.Android.postNotification("task_progress",rTitle,rMsg,rCid,!0,-1);
+var isRunning = rSumm && !rSumm.killed && !!rSumm.notFullyIdle && rSumm.status!==J.CascadeRunStatus.IDLE && rSumm.status!==1 && (rSumm.status===J.CascadeRunStatus.RUNNING || rSumm.status===J.CascadeRunStatus.BUSY || rSumm.status===2 || rSumm.status===4);
+if(isRunning){
+if(!_activeTasks.has(rCid)){
+_activeTasks.add(rCid);
+window.Android.postNotification("task_progress","Antigravity Task Progress","Running task in "+(rSumm.title||"conversation"),rCid,!0,-1);
+}
+}else{
+if(_activeTasks.has(rCid)){
+_activeTasks.delete(rCid);
+window.Android.cancelNotification("cascade_prog_"+rCid,0);
+}
+}
+}
+for(let delCid of (n||[])){
+if(_activeTasks.has(delCid)){
+_activeTasks.delete(delCid);
+window.Android.cancelNotification("cascade_prog_"+delCid,0);
 }
 }
 }
@@ -21815,7 +21836,7 @@ this.extensionApi?this.notificationPermission=c(await b(this.extensionApi.reques
 {label:"Allow",style:"primary",onClick:()=>{this.isEmbedded?(W9(Wod()),this.JSC$20588_permissionRequestManager.dismissPermission("notifications")):Notification.requestPermission().then(h=>{this.notificationPermission=h;this.JSC$20588_permissionRequestManager.dismissPermission("notifications");h==="granted"?this.sendNotification(a):this.JSC$20588_stateStore?.setEnableNotificationsForSpecialEvents(!1)})}}]}));if(this.notificationPermission==="granted"){this.sentNotificationIds.add(a.id);var f=a.silent??
 (Dpd(this.JSC$20588_stateStore)||lS());if(this.extensionApi)typeof document!=="undefined"&&document.hasFocus()||this.extensionApi.showBrowserNotification({payload:{id:a.id,title:a.title,body:a.body,silent:f,cascadeId:a.payload?.cascadeId,path:a.payload?.cascadeId?`/c/${a.payload.cascadeId}`:void 0}}).catch(h=>{console.error("[WebNotificationService] Failed to show notification:",h)});else if(this.isEmbedded){let h=Cod(Bod(Aod(new Dod,a.id).setTitle(a.title),a.body),f);a.payload?.cascadeId&&(h.setCascadeId(a.payload.cascadeId),
 Q8(h,5,`/c/${a.payload.cascadeId}`));W9(Uod(new U9,Eod(h)))}else if(typeof document==="undefined"||!document.hasFocus()){var g=new Notification(a.title,{body:a.body,silent:f,tag:a.id});a.payload?.cascadeId&&this.tracker.track(a.payload.cascadeId,g);this.JSC$20588_activeNotifications.set(a.id,g);g.onclose=()=>{this.JSC$20588_activeNotifications.get(a.id)===g&&this.JSC$20588_activeNotifications.delete(a.id)};g.onclick=()=>{window.focus();if(a.payload?.cascadeId)this.onNavigate(a.payload.cascadeId);
-this.JSC$20588_activeNotifications.get(a.id)===g&&this.JSC$20588_activeNotifications.delete(a.id);g.close()}}}}}finally{b()}}async clearNotifications(a){if(!this.extensionApi)if(this.isEmbedded){var b=new U9;a=(new wod).setCascadeId(a);b=L8(b,19,J8,a);W9(b)}else this.tracker.clear(a)}async openPreferences(){console.log("[WebNotificationService] openSystemPreferences is a no-op in browser")}};var Mpd={policies:{"github.com":{org:[{name:{anyOf:["*"]},repo:[{name:{anyOf:["*"]},allowCreateIssue:!0,allowCreatePr:!0,allowReadContents:!0,issues:[{number:{anyOf:["*"]},policy:{actions:["read"]}}],pulls:[{number:{anyOf:["*"]},policy:{actions:["read"]}}],branches:[{name:{anyOf:["fix-*","feature-*"]},policy:{actions:["create"]}}],allowReadWorkflow:!0,workflows:[]}]}]}}};const Npd=RegExp("^PERMISSIONED_GITHUB__GH_TOKEN=(.*)$","m");class X9 extends Error{}
+this.JSC$20588_activeNotifications.get(a.id)===g&&this.JSC$20588_activeNotifications.delete(a.id);g.close()}}}}}finally{b()}}async clearNotifications(a){try{if(typeof window!=="undefined"&&window.Android&&typeof window.Android.cancelNotification==="function"){window.Android.cancelNotification("cascade_prog_"+a,0);window.Android.cancelNotification("cascade_done_"+a,0);}}catch(_){}if(!this.extensionApi)if(this.isEmbedded){var b=new U9;a=(new wod).setCascadeId(a);b=L8(b,19,J8,a);W9(b)}else this.tracker.clear(a)}async openPreferences(){console.log("[WebNotificationService] openSystemPreferences is a no-op in browser")}};var Mpd={policies:{"github.com":{org:[{name:{anyOf:["*"]},repo:[{name:{anyOf:["*"]},allowCreateIssue:!0,allowCreatePr:!0,allowReadContents:!0,issues:[{number:{anyOf:["*"]},policy:{actions:["read"]}}],pulls:[{number:{anyOf:["*"]},policy:{actions:["read"]}}],branches:[{name:{anyOf:["fix-*","feature-*"]},policy:{actions:["create"]}}],allowReadWorkflow:!0,workflows:[]}]}]}}};const Npd=RegExp("^PERMISSIONED_GITHUB__GH_TOKEN=(.*)$","m");class X9 extends Error{}
 async function Opd(a){var b=e,c=e;try{let d;try{d=c(await b(fetch("https://api.github.com/user",{headers:{Authorization:`Bearer ${a}`,Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"}})))}catch(g){throw c(),new X9("Could not reach GitHub to validate the token. Check your connection.");}if(d.status===401)throw new X9("Invalid GitHub token. Please check the token and try again.");if(!d.ok)throw new X9(`GitHub token validation failed (status ${d.status}).`);let f=c(await b(d.json()));
 if(!f||typeof f.login!=="string"||!f.login)throw new X9("Could not determine the GitHub username for this token.");return f.login}finally{b()}}
 var Ppd=()=>{var a=(0,B.useContext)(Ok).get("")??null,[b,c]=(0,B.useState)(""),[d,f]=(0,B.useState)(""),[g,h]=(0,B.useState)(!1),[k,l]=(0,B.useState)(null),[,m]=(0,B.useState)(!1),[n,p]=(0,B.useState)(null),[q,t]=(0,B.useState)(null),u=q&&q.token===d?q.username:"",v=(0,B.useCallback)(async()=>{var x=e,y=e;try{if(a&&a.getHomeDirUri&&a.readFile)try{let z=`${y(await x(a.getHomeDirUri()))}/.env`;l(z);try{y(await x(a.stat(z)))}catch(C){y();c("");f("");return}let A=y(await x(a.readFile(z))),D=(new TextDecoder).decode(A).match(Npd);

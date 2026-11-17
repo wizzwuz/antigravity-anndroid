@@ -534,17 +534,17 @@ def patch_conversation_search_all(content):
 
 
 def patch_task_notifications(content):
-    if "__agyTaskProgressAlertsInjected" in content:
+    if "__agyTaskProgressAlertsInjected_v2" in content:
         return content
 
     import re
-    m = re.search(r"function xQa\(\)\{.*?k\(uQa\(b,q,n\)\),h\(q\)\),p\):m\(n\)\}\};", content, re.DOTALL)
-    if not m:
+    pattern = r"function xQa\(\)\{.*?\};(?=var yQa=Uj)"
+    if not re.search(pattern, content, re.DOTALL):
         raise RuntimeError("could not find xQa block in main.js")
 
-    old_xqa = m.group(0)
-    new_xqa = """function xQa(){/*__agyTaskProgressAlertsInjected*/
+    new_xqa = """function xQa(){/*__agyTaskProgressAlertsInjected_v2*/
 var a=new Set,b=new Set,c,d="Antigravity",f={},g,
+_activeTasks=new Set,
 h=l=>{
 var m=new Map,n=[];
 for(let [p,q]of l)l=q,m.set(l,p),n.push(l);
@@ -584,6 +584,7 @@ k=l=>{
 for(let [m,n]of l){
 l=m;
 let p=n;
+_activeTasks.delete(l);
 try{
 if(typeof window!=="undefined"&&window.Android&&typeof window.Android.cancelNotification==="function"){
 window.Android.cancelNotification("cascade_prog_"+l,0);
@@ -613,6 +614,11 @@ p=pl(l.getState());
 p=Object.entries(p).filter(([,v])=>!v.trajectoryMetadata?.sourceMetadata?.hideFromConversationList);
 uQa(b,p,[]);
 h(p);
+try{
+if(typeof window!=="undefined"&&window.Android&&typeof window.Android.cancelAllProgressNotifications==="function"){
+window.Android.cancelAllProgressNotifications();
+}
+}catch(_){}
 return m(n)
 }
 if(ml.match(n)){
@@ -621,11 +627,25 @@ q=n.payload;
 n=q.deletes;
 q=q.updates.filter(([,t])=>il(t.source)&&!t.trajectoryMetadata?.sourceMetadata?.hideFromConversationList);
 try{
-if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"){
+if(typeof window!=="undefined"&&window.Android){
 for(let [rCid,rSumm] of q){
-if(rSumm && (rSumm.notFullyIdle || rSumm.status===J.CascadeRunStatus.RUNNING || rSumm.status===1)){
-var rTitle="Antigravity Task Progress",rMsg="Running task in "+(rSumm.title||"conversation");
-window.Android.postNotification("task_progress",rTitle,rMsg,rCid,!0,-1);
+var isRunning = rSumm && !rSumm.killed && !!rSumm.notFullyIdle && rSumm.status!==J.CascadeRunStatus.IDLE && rSumm.status!==1 && (rSumm.status===J.CascadeRunStatus.RUNNING || rSumm.status===J.CascadeRunStatus.BUSY || rSumm.status===2 || rSumm.status===4);
+if(isRunning){
+if(!_activeTasks.has(rCid)){
+_activeTasks.add(rCid);
+window.Android.postNotification("task_progress","Antigravity Task Progress","Running task in "+(rSumm.title||"conversation"),rCid,!0,-1);
+}
+}else{
+if(_activeTasks.has(rCid)){
+_activeTasks.delete(rCid);
+window.Android.cancelNotification("cascade_prog_"+rCid,0);
+}
+}
+}
+for(let delCid of (n||[])){
+if(_activeTasks.has(delCid)){
+_activeTasks.delete(delCid);
+window.Android.cancelNotification("cascade_prog_"+delCid,0);
 }
 }
 }
@@ -637,18 +657,19 @@ return p
 return m(n)
 }
 };"""
-    content = must_replace(content, old_xqa, new_xqa, "xQa_task_notifications_redux")
+    content = re.sub(pattern, new_xqa, content, count=1, flags=re.DOTALL)
 
-    old_send = 'async sendNotification(a){var b=e,c=e;try{'
-    new_send = (
-        'async sendNotification(a){var b=e,c=e;try{'
-        'try{if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"){'
-        'var cid=(a.payload&&a.payload.cascadeId)||"";'
-        'var chl=a.channel||(a.ongoing?"task_progress":"task_alerts_completion");'
-        'window.Android.postNotification(chl,a.title||"Antigravity",a.body||"",cid,!!a.ongoing,-1);'
-        '}}catch(_){}'
-    )
-    content = must_replace(content, old_send, new_send, "lpd_send_notification_native_forward")
+    if "clearNotifications(a){try{" not in content:
+        old_clear = "async clearNotifications(a){if(!this.extensionApi)"
+        new_clear = (
+            'async clearNotifications(a){'
+            'try{if(typeof window!=="undefined"&&window.Android&&typeof window.Android.cancelNotification==="function"){'
+            'window.Android.cancelNotification("cascade_prog_"+a,0);'
+            'window.Android.cancelNotification("cascade_done_"+a,0);'
+            '}}catch(_){}'
+            'if(!this.extensionApi)'
+        )
+        content = must_replace(content, old_clear, new_clear, "lpd_clear_notifications_native")
 
     return content
 
@@ -782,8 +803,8 @@ def patch_main(file_path):
             print("[web-patch-2.32.1] Applying Conversation Search All occurrences patch...")
             content = patch_conversation_search_all(content)
             changed = True
-        if "__agyTaskProgressAlertsInjected" not in content:
-            print("[web-patch-2.32.1] Applying Task Progress & Alerts Redux Notifications patch...")
+        if "__agyTaskProgressAlertsInjected_v2" not in content:
+            print("[web-patch-2.32.1] Applying Task Progress & Alerts Redux Notifications v2 patch...")
             content = patch_task_notifications(content)
             changed = True
         if "NotificationSettingsScreen" not in content:

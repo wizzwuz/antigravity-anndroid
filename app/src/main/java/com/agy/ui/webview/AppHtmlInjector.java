@@ -57,6 +57,7 @@ public final class AppHtmlInjector {
                     + "shizukuAvailable:function(){return _nb.shizukuAvailableAuth(_bt);},"
                     + "postNotification:function(a,b,c,d,e,f){if(arguments.length<=3){return _nb.postNotificationAuth(_bt,String(a||''),String(b||''),String(c||''));}else{return _nb.postNotificationAuth(_bt,String(a||''),String(b||''),String(c||''),String(d||''),!!e,Number(f!=null?f:-1));}},"
                     + "cancelNotification:function(t,i){return _nb.cancelNotificationAuth(_bt,String(t||''),Number(i||0));},"
+                    + "cancelAllProgressNotifications:function(){return _nb.cancelAllProgressNotificationsAuth(_bt);},"
                     + "openNotificationSettings:function(){return _nb.openNotificationSettingsAuth(_bt);},"
                     + "getNotificationSettings:function(){return _nb.getNotificationSettingsAuth(_bt);},"
                     + "setNotificationSetting:function(k,v){return _nb.setNotificationSettingAuth(_bt,String(k||''),!!v);},"

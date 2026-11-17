@@ -182,6 +182,7 @@ public class MainActivity extends Activity
         splash.installExitAnimation(this);
 
         splashDeadline = System.currentTimeMillis() + SPLASH_TIMEOUT_MS;
+        com.agy.gateway.handlers.NotificationHandler.cancelAllProgressNotifications(this);
         requestStoragePermissions();
         requestNotificationPermissions();
         startCoreService();

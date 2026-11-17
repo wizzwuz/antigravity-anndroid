@@ -7,6 +7,9 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.media.AudioAttributes;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
 import android.service.notification.StatusBarNotification;
@@ -28,7 +31,7 @@ public final class NotificationHandler {
     private static final String TAG = "NotificationHandler";
 
     public static final String CHANNEL_TASK_PROGRESS = "task_progress";
-    public static final String CHANNEL_TASK_ALERTS_COMPLETION = "task_alerts_completion";
+    public static final String CHANNEL_TASK_ALERTS_COMPLETION = "task_alerts_floating_v2";
 
     // Legacy and polyfill compatibility aliases
     public static final String CHANNEL_AGENT_PROGRESS = "agent_progress";
@@ -36,6 +39,7 @@ public final class NotificationHandler {
     public static final String CHANNEL_AGENT_COMPLETED_OPEN_CHAT = "agent_completed_open_chat";
     public static final String CHANNEL_TASKS = "agy_tasks";
     public static final String CHANNEL_ALERTS = "agy_alerts";
+    public static final String CHANNEL_TASK_ALERTS_COMPLETION_OLD = "task_alerts_completion";
 
     public static final String PREFS_NAME = "antigravity_notifications";
     public static final String PREF_PROGRESS_ENABLED = "progress_enabled";
@@ -68,17 +72,33 @@ public final class NotificationHandler {
             progressChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             manager.createNotificationChannel(progressChannel);
 
+            // Delete previous channel without sound if present
+            try {
+                manager.deleteNotificationChannel(CHANNEL_TASK_ALERTS_COMPLETION_OLD);
+            } catch (Throwable ignored) {}
+
             // 2. Antigravity Task Alerts and Completion: floating heads-up alerts & completions
             NotificationChannel alertsChannel = new NotificationChannel(
                     CHANNEL_TASK_ALERTS_COMPLETION,
                     "Antigravity Task Alerts and Completion",
                     NotificationManager.IMPORTANCE_HIGH);
-            alertsChannel.setDescription("Floating notifications showing Alerts or Completion of tasks across conversations");
+            alertsChannel.setDescription("Floating heads-up notifications showing permission requests, alerts, or completion");
             alertsChannel.enableLights(true);
+            alertsChannel.setLightColor(0xFF00E5FF);
             alertsChannel.enableVibration(true);
             alertsChannel.setVibrationPattern(new long[]{0, 250, 100, 250});
             alertsChannel.setShowBadge(true);
             alertsChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            alertsChannel.setBypassDnd(true);
+
+            Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            if (soundUri != null) {
+                AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
+                        .build();
+                alertsChannel.setSound(soundUri, audioAttributes);
+            }
             manager.createNotificationChannel(alertsChannel);
 
             // Compatibility channel aliases
@@ -91,6 +111,13 @@ public final class NotificationHandler {
                     CHANNEL_AGENT_COMPLETED, "Antigravity Task Alerts and Completion", NotificationManager.IMPORTANCE_HIGH);
             compatDone.enableLights(true);
             compatDone.enableVibration(true);
+            if (soundUri != null) {
+                AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
+                        .build();
+                compatDone.setSound(soundUri, audioAttributes);
+            }
             manager.createNotificationChannel(compatDone);
         }
     }
@@ -105,6 +132,7 @@ public final class NotificationHandler {
             return CHANNEL_TASK_PROGRESS;
         }
         if (CHANNEL_TASK_ALERTS_COMPLETION.equalsIgnoreCase(rawChannel)
+                || CHANNEL_TASK_ALERTS_COMPLETION_OLD.equalsIgnoreCase(rawChannel)
                 || CHANNEL_AGENT_COMPLETED.equalsIgnoreCase(rawChannel)
                 || CHANNEL_AGENT_COMPLETED_OPEN_CHAT.equalsIgnoreCase(rawChannel)
                 || CHANNEL_ALERTS.equalsIgnoreCase(rawChannel)) {
@@ -193,8 +221,13 @@ public final class NotificationHandler {
         if (CHANNEL_TASK_ALERTS_COMPLETION.equals(activeChannel)) {
             builder.setPriority(Notification.PRIORITY_MAX);
             builder.setDefaults(Notification.DEFAULT_ALL);
+            Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            if (soundUri != null) {
+                builder.setSound(soundUri);
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                builder.setCategory(Notification.CATEGORY_EVENT);
+                builder.setCategory(Notification.CATEGORY_REMINDER);
+                builder.setVisibility(Notification.VISIBILITY_PUBLIC);
                 builder.setVibrate(new long[]{0, 250, 100, 250});
             }
         } else {

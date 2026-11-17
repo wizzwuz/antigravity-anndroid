@@ -81,6 +81,7 @@ public final class AppHtmlInjector {
                     + "restoreSkills:function(t){return _nb.restoreSkillsAuth(_bt,String(t||''));},"
                     + "listSkills:function(){return _nb.listSkills();},"
                     + "listConversations:function(){return _nb.listConversations();},"
+                    + "searchAllConversations:function(q){return _nb.searchAllConversationsAuth(_bt,String(q||''));},"
                     + "restartApp:function(){return _nb.restartAppAuth(_bt);}"
                     + "});"
                     + "try{Object.defineProperty(window,'Android',{value:_api,writable:false,configurable:false});}catch(_e2){window.Android=_api;}"

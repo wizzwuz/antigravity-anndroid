@@ -517,6 +517,19 @@ public final class AndroidBridge {
     }
 
     @JavascriptInterface
+    public String searchAllConversations(String query) {
+        final MainActivity act = MainActivity.activeActivity;
+        android.content.Context ctx = act != null ? act.getApplicationContext() : appContext;
+        return com.agy.util.ConversationSearchHelper.searchAllConversationsJson(ctx, query);
+    }
+
+    @JavascriptInterface
+    public String searchAllConversationsAuth(String authToken, String query) {
+        if (!isAuthorized(authToken)) return "[]";
+        return searchAllConversations(query);
+    }
+
+    @JavascriptInterface
     public void restartAppAuth(String authToken) {
         if (!isAuthorized(authToken)) return;
         restartApp();

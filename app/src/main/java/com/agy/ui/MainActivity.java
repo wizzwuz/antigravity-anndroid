@@ -182,10 +182,8 @@ public class MainActivity extends Activity
         splash.installExitAnimation(this);
 
         splashDeadline = System.currentTimeMillis() + SPLASH_TIMEOUT_MS;
-        notificationPermissionSynced = Build.VERSION.SDK_INT < 33
-                || checkSelfPermission("android.permission.POST_NOTIFICATIONS")
-                == PackageManager.PERMISSION_GRANTED;
         requestStoragePermissions();
+        requestNotificationPermissions();
         startCoreService();
 
         handler.postDelayed(pollServer, 30);
@@ -465,6 +463,18 @@ public class MainActivity extends Activity
             }
         }
         requestBatteryOptimizationExemption();
+    }
+
+    private void requestNotificationPermissions() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1004);
+            } else {
+                notificationPermissionSynced = true;
+            }
+        } else {
+            notificationPermissionSynced = true;
+        }
     }
 
     private void requestBatteryOptimizationExemption() {
@@ -878,6 +888,12 @@ public class MainActivity extends Activity
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 1004) {
+            notificationPermissionSynced = Build.VERSION.SDK_INT < 33
+                    || checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                    == PackageManager.PERMISSION_GRANTED;
+            syncForegroundNotificationIfPermitted();
+        }
         if (requestCode == REQUEST_AUDIO_PERMISSION) {
             syncForegroundNotificationIfPermitted();
             boolean granted = false;

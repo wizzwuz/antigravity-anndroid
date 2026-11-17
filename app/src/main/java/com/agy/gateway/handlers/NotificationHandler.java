@@ -143,6 +143,7 @@ public final class NotificationHandler {
                 // Automatically cancel any active progress notification for this conversation
                 try {
                     manager.cancel("cascade_prog_" + cid, 10000 + hashOffset);
+                    manager.cancel("cascade_prog_" + cid, 0);
                 } catch (Throwable ignored) {}
             }
         } else {
@@ -208,7 +209,12 @@ public final class NotificationHandler {
             }
         }
 
-        manager.notify(actualTag, actualId, builder.build());
+        try {
+            manager.notify(actualTag, actualId, builder.build());
+            Log.i(TAG, "Notification posted: tag=" + actualTag + " id=" + actualId + " channel=" + activeChannel);
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed posting notification: " + t.getMessage(), t);
+        }
     }
 
     public static void cancel(Context context, String tag, int id) {

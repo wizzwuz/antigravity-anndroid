@@ -468,106 +468,202 @@ def patch_contextual_search_icon(content):
     )
 
     return content
-def patch_convo_switcher(content):
-    if "window.__agyOpenConversation=" in content:
-        return content
-    target = 'N_=()=>{var a=mZ();return(0,B.useCallback)(b=>{b&&a(b)},[a])}'
-    replacement = (
-        'N_=()=>{var a=mZ(),nav=(0,B.useCallback)(b=>{b&&a(b)},[a]);'
-        'if(typeof window!=="undefined"){'
-        'window.__agyOpenConversation=function(cid){try{if(cid){nav(cid);return!0}}catch(_){}try{window.location.hash="#/cascade/"+cid}catch(_){}};'
-        'if(window.__agyPendingCascadeId){var pCid=window.__agyPendingCascadeId;delete window.__agyPendingCascadeId;setTimeout(function(){window.__agyOpenConversation(pCid)},100);}'
-        '}'
-        'return nav}'
-    )
-    return must_replace(content, target, replacement, "N_convo_switcher_hook")
 
-
-def patch_task_progress_notifications(content):
-    if "__agyActiveTasks" in content:
+def patch_conversation_search_all(content):
+    if "window.Android.searchAllConversations" in content:
         return content
-    target = 'function cl(a){return!a.killed&&(a.notFullyIdle||a.status===J.CascadeRunStatus.RUNNING)}'
-    replacement = (
-        'function cl(a){'
-        'var r=!a.killed&&(a.notFullyIdle||a.status===J.CascadeRunStatus.RUNNING);'
+
+    # 1. In Ctc: replace language server search with Android native ConversationSearchHelper
+    old_ctc_call = 'let O=P(await N(d({query:b,limit:G,...(F?{filters:{archivedOnly:!0}}:{}),signal:K.signal})));'
+    new_ctc_call = (
+        'let O;'
         'try{'
-        'if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"&&a&&a.cascadeId){'
-        'if(!window.__agyActiveTasks)window.__agyActiveTasks=new Map();'
-        'var prev=window.__agyActiveTasks.get(a.cascadeId);'
-        'if(r&&!prev){'
-        'window.__agyActiveTasks.set(a.cascadeId,!0);'
-        'var title="Antigravity Task Progress";'
-        'var msg="Running tasks in "+(a.title||"Conversation");'
-        'window.Android.postNotification("task_progress",title,msg,a.cascadeId,!0,-1);'
-        '}else if(!r&&prev){'
-        'window.__agyActiveTasks.delete(a.cascadeId);'
-        'if(typeof window.Android.cancelNotification==="function"){'
-        'window.Android.cancelNotification("cascade_prog_"+a.cascadeId,0);'
+        'if(typeof window!=="undefined"&&window.Android&&typeof window.Android.searchAllConversations==="function"){'
+        'var _raw=window.Android.searchAllConversations(b),_parsed=JSON.parse(_raw||"[]");'
+        'O={results:_parsed,indexStale:!1,diskFull:!1}'
+        '}else{'
+        'O=P(await N(d({query:b,limit:G,...(F?{filters:{archivedOnly:!0}}:{}),signal:K.signal})))'
         '}'
+        '}catch(_se){'
+        'O=P(await N(d({query:b,limit:G,...(F?{filters:{archivedOnly:!0}}:{}),signal:K.signal})))'
         '}'
-        '}'
-        '}catch(_){}'
-        'return r}'
     )
-    return must_replace(content, target, replacement, "cl_task_progress_notification")
+    content = must_replace(content, old_ctc_call, new_ctc_call, "ctc_search_all_conversations")
+
+    # 2. In Ttc: enable conversation search V2 unconditionally
+    old_c_flag = 'D=b.trim().length>0,C=oj().get("conversationSearchV2")?.enabled??!1,F=q||m.includes("scheduled")'
+    new_c_flag = 'D=b.trim().length>0,C=!0,F=q||m.includes("scheduled")'
+    content = must_replace(content, old_c_flag, new_c_flag, "ttc_enable_convo_search_v2")
+
+    # 3. In Ttc: increase result slice from 50 to 250
+    old_slice = 'u.has(X.cascadeId)).slice(0,50),[m,x,u,G,h.summaries,y,g])'
+    new_slice = 'u.has(X.cascadeId)).slice(0,250),[m,x,u,G,h.summaries,y,g])'
+    content = must_replace(content, old_slice, new_slice, "ttc_slice_250")
+
+    # 4. In Ttc: selectOrClose jump to conversation and step
+    old_select_close = 'selectOrClose:X=>{V(X);if(X){var _match=(typeof O!=="undefined"&&Array.isArray(O))?O.find(x=>x.cascadeId===X.id):null;window.__agPendingConvoJump={cascadeId:X.id,stepIndex:_match?_match.matchedStepIndex:void 0,snippet:_match?_match.snippet:"",query:(b||"").trim(),time:Date.now()};typeof window.__agTriggerPendingJump==="function"&&window.__agTriggerPendingJump();f(X.id)}d()}'
+    new_select_close = (
+        'selectOrClose:X=>{V(X);if(X){'
+        'var _cid=(X.cascadeId||X.id||"").split(":")[0];'
+        'var _step=X.matchedStepIndex!==void 0?X.matchedStepIndex:((typeof O!=="undefined"&&Array.isArray(O))?O.find(x=>x.cascadeId===_cid)?.matchedStepIndex:void 0);'
+        'var _snip=X.snippet||((typeof O!=="undefined"&&Array.isArray(O))?O.find(x=>x.cascadeId===_cid)?.snippet:"");'
+        'window.__agPendingConvoJump={cascadeId:_cid,stepIndex:_step,snippet:_snip,query:(b||"").trim(),time:Date.now()};'
+        'typeof window.__agTriggerPendingJump==="function"&&window.__agTriggerPendingJump();'
+        'f(_cid)}d()}'
+    )
+    content = must_replace(content, old_select_close, new_select_close, "ttc_selectOrClose_jump")
+
+    # 5. In Atc: unique ID per match occurrence, format label with step index, snippet and match highlighting
+    old_atc = r'function Atc(a,b){var c=ytc(a.snippetMatchRanges),{snippet:d,matches:f}=ztc(a.snippet,c);(c=d.trim().replace(/^\.\.\.|\.\.\.$/g,"").trim())&&a.title.trim().toLowerCase().includes(c)&&(d="",f=void 0);return{type:"basic",item:{id:a.cascadeId,matchedStepIndex:a.matchedStepIndex,snippet:a.snippet,queryMatches:a.snippetMatchRanges,label:a.title||"Untitled Conversation",'
+    new_atc = (
+        r'function Atc(a,b){var c=ytc(a.snippetMatchRanges),{snippet:d,matches:f}=ztc(a.snippet,c);'
+        r'(c=d.trim().replace(/^\.\.\.|\.\.\.$/g,"").trim())&&a.title&&a.title.trim().toLowerCase().includes(c)&&a.matchedStepIndex===void 0&&(d="",f=void 0);'
+        'var _stepSuffix=a.matchedStepIndex!==void 0?" \\u00b7 Step "+a.matchedStepIndex:"",'
+        '_lbl=(a.title||"Untitled Conversation")+_stepSuffix,'
+        '_uid=a.uniqueId||(a.cascadeId+":"+(a.matchedStepIndex!==void 0?a.matchedStepIndex:"0")+":"+(a.startOffset||0));'
+        'return{type:"basic",item:{id:_uid,cascadeId:a.cascadeId,matchedStepIndex:a.matchedStepIndex,snippet:a.snippet,queryMatches:a.snippetMatchRanges,label:_lbl,'
+    )
+    content = must_replace(content, old_atc, new_atc, "atc_unique_item_and_step_label")
+
+    # 6. In mhc: add data-step-index to agent turn items
+    old_mhc = 'const mhc=({step:a,debugMode:b})=>{var {verboseAgentChat:c,getStepRendererConfig:d}=EA();return d(a).isRendered(a,b,c)?B.createElement("div",{className:"flex flex-row"},'
+    new_mhc = 'const mhc=({step:a,debugMode:b})=>{var {verboseAgentChat:c,getStepRendererConfig:d}=EA();return d(a).isRendered(a,b,c)?B.createElement("div",{className:"flex flex-row","data-step-index":zV(a.metadata)},'
+    content = must_replace(content, old_mhc, new_mhc, "mhc_data_step_index")
+
+    return content
 
 
-def patch_task_alerts_completion_notifications(content):
-    if "__agAlertsCompletionInjected" in content:
+def patch_task_notifications(content):
+    if "__agyTaskProgressAlertsInjected" in content:
         return content
-    target = 'var g=new Notification(a.title,{body:a.body,silent:f,tag:a.id});'
-    replacement = (
-        'var g=new Notification(a.title,{body:a.body,silent:f,tag:a.id});/*__agAlertsCompletionInjected*/'
-        'try{'
-        'if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"){'
+
+    import re
+    m = re.search(r"function xQa\(\)\{.*?k\(uQa\(b,q,n\)\),h\(q\)\),p\):m\(n\)\}\};", content, re.DOTALL)
+    if not m:
+        raise RuntimeError("could not find xQa block in main.js")
+
+    old_xqa = m.group(0)
+    new_xqa = """function xQa(){/*__agyTaskProgressAlertsInjected*/
+var a=new Set,b=new Set,c,d="Antigravity",f={},g,
+h=l=>{
+var m=new Map,n=[];
+for(let [p,q]of l)l=q,m.set(l,p),n.push(l);
+tQa(a,n,p=>{
+var q=p.summary.workspaces?.[0]?.workspaceFolderAbsoluteUri,
+t=p.step.step?.metadata?.sourceTrajectoryStepInfo?.cascadeId||m.get(p.summary)||p.summary.trajectoryId;
+a:{
+p=p.step;
+var u=p.step;
+if(u){
+var v=Ef(u).step;
+if(v.case){
+switch(v.case){
+case "runCommand":u=v.value;v="Requesting your permission in Terminal:";u=`Command: ${u.commandLine}`;break;
+case "openBrowserUrl":u=v.value;v="Requesting your permission to open URL:";u=`URL: ${u.url}`;break;
+case "askQuestion":u=v.value;let w=u.questions?.length??0;v=w>1?"The agent has questions for you:":"The agent has a question for you:";u=u.questions?.[0]?.question||(w>1?"Click to respond to the questions.":"Click to respond to the question.");break;
+default:v=u.requestedInteraction?.interaction,(u=v?.case==="permission"?v.value.resource?.target:void 0)?v="Requesting your permission:":(v="Action requires your attention",u="The agent is waiting for your input.")
+}
+q={id:p.stepIndex.toString()+t,title:v,body:u,payload:{cascadeId:t,workspaceUri:q,type:"request_action"}};
+break a
+}
+}
+q=void 0
+}
+if(q){
+try{
+if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"){
+window.Android.postNotification("task_alerts_completion",v||"Antigravity Task Alert",u||"Action requires your attention",t,!1,-1);
+}
+}catch(_){}
+f.actionRequired&&g?.({soundFile:f.actionRequired});
+c?.(q);
+}
+})
+},
+k=l=>{
+for(let [m,n]of l){
+l=m;
+let p=n;
+try{
+if(typeof window!=="undefined"&&window.Android&&typeof window.Android.cancelNotification==="function"){
+window.Android.cancelNotification("cascade_prog_"+l,0);
+}
+}catch(_){}
+if(p.latestExecutorTerminationReason!==J.ExecutorTerminationReason.USER_CANCELED){
+try{
+if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"){
+var _cTitle="Antigravity Task Completion",_cBody=p.summary?`Agent finished: ${p.summary}`:("Task completed in "+(p.title||"conversation"));
+window.Android.postNotification("task_alerts_completion",_cTitle,_cBody,l,!1,-1);
+}
+}catch(_){}
+f.cascadeDone&&g?.({soundFile:f.cascadeDone});
+c?.({id:`agent-finished-${l}-${p.stepCount??0}`,title:d,body:p.summary?`Agent finished: ${p.summary}`:"Agent finished",payload:{cascadeId:l,type:"request_action",workspaceUri:void 0}});
+}
+}
+};
+return l=>m=>n=>{
+if(vQa.match(n)){
+var p=n.payload,q=p.appName;
+let t=p.soundFiles,u=p.playSound;
+c=p.sendNotification;
+d=wQa(q);
+f=t;
+g=u;
+p=pl(l.getState());
+p=Object.entries(p).filter(([,v])=>!v.trajectoryMetadata?.sourceMetadata?.hideFromConversationList);
+uQa(b,p,[]);
+h(p);
+return m(n)
+}
+if(ml.match(n)){
+p=m(n);
+q=n.payload;
+n=q.deletes;
+q=q.updates.filter(([,t])=>il(t.source)&&!t.trajectoryMetadata?.sourceMetadata?.hideFromConversationList);
+try{
+if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"){
+for(let [rCid,rSumm] of q){
+if(rSumm && (rSumm.notFullyIdle || rSumm.status===J.CascadeRunStatus.RUNNING || rSumm.status===1)){
+var rTitle="Antigravity Task Progress",rMsg="Running task in "+(rSumm.title||"conversation");
+window.Android.postNotification("task_progress",rTitle,rMsg,rCid,!0,-1);
+}
+}
+}
+}catch(_){}
+k(uQa(b,q,n));
+h(q);
+return p
+}
+return m(n)
+}
+};"""
+    content = must_replace(content, old_xqa, new_xqa, "xQa_task_notifications_redux")
+
+    old_send = 'async sendNotification(a){var b=e,c=e;try{'
+    new_send = (
+        'async sendNotification(a){var b=e,c=e;try{'
+        'try{if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"){'
         'var cid=(a.payload&&a.payload.cascadeId)||"";'
-        'window.Android.postNotification("task_alerts_completion",a.title||"Antigravity Task Alerts and Completion",a.body||"",cid,!1,-1);'
-        '}'
-        '}catch(_){}'
+        'var chl=a.channel||(a.ongoing?"task_progress":"task_alerts_completion");'
+        'window.Android.postNotification(chl,a.title||"Antigravity",a.body||"",cid,!!a.ongoing,-1);'
+        '}}catch(_){}'
     )
-    return must_replace(content, target, replacement, "notification_task_alerts_completion")
+    content = must_replace(content, old_send, new_send, "lpd_send_notification_native_forward")
+
+    return content
 
 
-def patch_notification_settings(content):
+def patch_notification_settings_clean(content):
     if "NotificationSettingsScreen" in content:
         return content
 
-    content = must_replace(
-        content,
-        '["Backup and Restore","Backup and Restore"]',
-        '["Backup and Restore","Backup and Restore"],["Notification Settings","Notification Settings"]',
-        "mEb_notification_settings_label",
-    )
+    old_meb = '["Provide Feedback","Give Feedback"],["Backup and Restore","Backup and Restore"]'
+    new_meb = '["Provide Feedback","Give Feedback"],["Backup and Restore","Backup and Restore"],["Notifications","Notification Settings"]'
+    content = must_replace(content, old_meb, new_meb, "mEb_notifications_label")
 
-    content = must_replace(
-        content,
-        '"Backup and Restore"];',
-        '"Backup and Restore","Notification Settings"];',
-        "zPb_mobile_notification_settings_list",
-    )
+    old_clb = 'var cLb=()=>oj().get("notificationsSettings")??!1?B.createElement(HQ,{title:"Notifications",description:"Manage your notification preferences."},B.createElement(LQ,{title:"General"},B.createElement(JQ,null,B.createElement(MR,{settingKey:"enableNotificationsForSpecialEvents"}))),B.createElement(LQ,{title:"Sound"},B.createElement(JQ,null,B.createElement(MR,{settingKey:"enableSoundsForSpecialEvents"}),B.createElement(bLb,null)))):null;'
 
-    content = must_replace(
-        content,
-        'case "Backup and Restore":return B.createElement(BackupRestoreScreen,null);',
-        'case "Backup and Restore":return B.createElement(BackupRestoreScreen,null);case "Notification Settings":return B.createElement(NotificationSettingsScreen,null);',
-        "vPb_notification_screen_resolver",
-    )
-
-    content = must_replace(
-        content,
-        'B.createElement(rV,{text:"Backup and Restore",label:IQ("Backup and Restore"),onClick:()=>{M(ou("Backup and Restore"))},isActive:L&&c==="Backup and Restore"})',
-        'B.createElement(rV,{text:"Backup and Restore",label:IQ("Backup and Restore"),onClick:()=>{M(ou("Backup and Restore"))},isActive:L&&c==="Backup and Restore"}),B.createElement(rV,{text:"Notification Settings",label:IQ("Notification Settings"),onClick:()=>{M(ou("Notification Settings"))},isActive:L&&c==="Notification Settings"})',
-        "YRb_desktop_notification_settings_sidebar",
-    )
-
-    content = must_replace(
-        content,
-        'B.createElement("div",{style:{display:c==="Backup and Restore"?"block":"none"}},B.createElement(BackupRestoreScreen,null))',
-        'B.createElement("div",{style:{display:c==="Backup and Restore"?"block":"none"}},B.createElement(BackupRestoreScreen,null)),B.createElement("div",{style:{display:c==="Notification Settings"?"block":"none"}},B.createElement(NotificationSettingsScreen,null))',
-        "iSb_desktop_notification_view_container",
-    )
-
-    notification_settings_comp = '''var NotificationSettingsScreen=()=>{
+    notification_settings_comp = """var NotificationSettingsScreen=()=>{
 var [progressEnabled,setProgressEnabled]=(0,B.useState)(!0);
 var [alertsEnabled,setAlertsEnabled]=(0,B.useState)(!0);
 var [testStatus,setTestStatus]=(0,B.useState)("");
@@ -594,23 +690,16 @@ var onOpenSystemSettings=()=>{
 try{window.Android&&window.Android.openNotificationSettings&&window.Android.openNotificationSettings()}catch(_){}
 };
 var onTestProgress=()=>{
-setTestStatus("Dispatched test progress notification...");
+setTestStatus("Dispatched test persistent task progress notification...");
 try{
 var cid="demo_"+Math.random().toString(36).substring(2,7);
-window.Android&&window.Android.postNotification&&window.Android.postNotification(
-"task_progress",
-"Antigravity Task Progress",
-"Running task in test conversation",
-cid,
-!0,
-45
-);
+window.Android&&window.Android.postNotification&&window.Android.postNotification("task_progress","Antigravity Task Progress","Running task in test conversation",cid,!0,45);
 setTimeout(()=>{
-setTestStatus("Active in notification shade. Tap to open or wait 5s to auto-clear.");
+setTestStatus("Active in notification shade. Tap to open or wait 6s to auto-clear.");
 setTimeout(()=>{
 window.Android&&window.Android.cancelNotification&&window.Android.cancelNotification("cascade_prog_"+cid,0);
 setTestStatus("");
-},5000);
+},6000);
 },600);
 }catch(e){setTestStatus("Error: "+e.message)}
 };
@@ -618,29 +707,19 @@ var onTestAlert=()=>{
 setTestStatus("Dispatched test floating alert notification...");
 try{
 var cid="demo_"+Math.random().toString(36).substring(2,7);
-window.Android&&window.Android.postNotification&&window.Android.postNotification(
-"task_alerts_completion",
-"Antigravity Task Alerts and Completion",
-"Task completed successfully in background!",
-cid,
-!1,
--1
-);
+window.Android&&window.Android.postNotification&&window.Android.postNotification("task_alerts_completion","Antigravity Task Alerts and Completion","Task completed successfully in background!",cid,!1,-1);
 setTimeout(()=>setTestStatus("Floating heads-up notification sent!"),400);
 }catch(e){setTestStatus("Error: "+e.message)}
 };
-return B.createElement("div",{className:"max-w-2xl mx-auto py-6 px-4 space-y-6"},
-B.createElement("div",{className:"space-y-1.5"},
-B.createElement("h2",{className:"text-2xl font-bold tracking-tight text-foreground m-0"},"Notification Settings"),
-B.createElement("p",{className:"text-sm text-muted-foreground m-0"},"Configure background task progress and floating alert notifications.")),
+return B.createElement(HQ,{title:"Notification Settings",description:"Configure background task progress and floating alert notifications."},
+B.createElement("div",{className:"space-y-6 max-w-2xl pb-8 p-1"},
 testStatus&&B.createElement("div",{className:"p-3 rounded-xl bg-primary/10 border border-primary/20 text-xs text-primary font-medium"},testStatus),
 B.createElement("div",{className:"space-y-4"},
 B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},
 B.createElement("div",{className:"flex items-start justify-between gap-3"},
 B.createElement("div",{className:"space-y-0.5"},
 B.createElement("div",{className:"font-semibold text-base text-foreground"},"Antigravity Task Progress"),
-B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},
-"A persistent notification showing Antigravity running tasks of different conversations as separate notifications in the system shade.")),
+B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},"A persistent notification showing Antigravity running tasks of different conversations as separate notifications in the system notification shade.")),
 B.createElement("input",{type:"checkbox",checked:progressEnabled,onChange:onToggleProgress,className:"h-5 w-5 rounded border-border accent-primary cursor-pointer mt-1"})),
 B.createElement("div",{className:"pt-1"},
 B.createElement(sz,{variant:"secondary",size:"sm",onClick:onTestProgress,className:"flex items-center gap-1.5 text-xs"},
@@ -649,8 +728,7 @@ B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-mu
 B.createElement("div",{className:"flex items-start justify-between gap-3"},
 B.createElement("div",{className:"space-y-0.5"},
 B.createElement("div",{className:"font-semibold text-base text-foreground"},"Antigravity Task Alerts and Completion"),
-B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},
-"A floating notification showing any Alerts or Completion of tasks of all running conversations as separate notifications.")),
+B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},"A floating notification showing any Alerts or Completion of tasks of all running conversations as separate notifications.")),
 B.createElement("input",{type:"checkbox",checked:alertsEnabled,onChange:onToggleAlerts,className:"h-5 w-5 rounded border-border accent-primary cursor-pointer mt-1"})),
 B.createElement("div",{className:"pt-1"},
 B.createElement(sz,{variant:"secondary",size:"sm",onClick:onTestAlert,className:"flex items-center gap-1.5 text-xs"},
@@ -658,17 +736,17 @@ B.createElement(nq,{name:"notifications_active",size:14}),"Test Floating Alert")
 B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},
 B.createElement("div",{className:"space-y-0.5"},
 B.createElement("div",{className:"font-semibold text-base text-foreground"},"Android System Notification Channels"),
-B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},
-"Configure system sound, vibration, popup banners, and lockscreen privacy for each notification channel in Android Settings.")),
+B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},"Configure system sound, vibration, popup banners, and lockscreen privacy for each notification channel in Android Settings.")),
 B.createElement("div",{className:"pt-1"},
 B.createElement(sz,{variant:"primary",size:"md",onClick:onOpenSystemSettings,className:"flex items-center gap-1.5 text-sm"},
 B.createElement(nq,{name:"tune",size:16}),"Manage in Android Settings"))))
+)
 );
 };
-'''
-    content = must_replace(content, 'var UKb=', notification_settings_comp + 'var UKb=', "UKb_inject_NotificationSettingsScreen")
-    return content
+var cLb=()=>B.createElement(NotificationSettingsScreen,null);"""
 
+    content = must_replace(content, old_clb, notification_settings_comp, "replace_old_cLb_with_NotificationSettingsScreen")
+    return content
 
 def patch_main(file_path):
     if not os.path.isfile(file_path):
@@ -683,22 +761,6 @@ def patch_main(file_path):
         if "BackupRestoreScreen" not in content:
             print("[web-patch-2.32.1] Applying BackupRestoreScreen patch...")
             content = patch_backup_restore(content)
-            changed = True
-        if "NotificationSettingsScreen" not in content:
-            print("[web-patch-2.32.1] Applying Notification Settings patch...")
-            content = patch_notification_settings(content)
-            changed = True
-        if "__agyActiveTasks" not in content:
-            print("[web-patch-2.32.1] Applying Task Progress Notifications patch...")
-            content = patch_task_progress_notifications(content)
-            changed = True
-        if "__agAlertsCompletionInjected" not in content:
-            print("[web-patch-2.32.1] Applying Task Alerts and Completion Notifications patch...")
-            content = patch_task_alerts_completion_notifications(content)
-            changed = True
-        if "window.__agyOpenConversation=" not in content:
-            print("[web-patch-2.32.1] Applying Conversation Switcher hook patch...")
-            content = patch_convo_switcher(content)
             changed = True
         if 'data-testid="terminal-surface"' not in content and 'data-testid=\"terminal-surface\"' not in content:
             print("[web-patch-2.32.1] Applying Terminal touch scroll patch...")
@@ -716,13 +778,25 @@ def patch_main(file_path):
             print("[web-patch-2.32.1] Updating Marketplace V3 RPCs with full catalog & Featured merge...")
             content = content.replace(OLD_MP_BLOCK_V3, NEW_MP_BLOCK_V3, 1)
             changed = True
+        if "window.Android.searchAllConversations" not in content:
+            print("[web-patch-2.32.1] Applying Conversation Search All occurrences patch...")
+            content = patch_conversation_search_all(content)
+            changed = True
+        if "__agyTaskProgressAlertsInjected" not in content:
+            print("[web-patch-2.32.1] Applying Task Progress & Alerts Redux Notifications patch...")
+            content = patch_task_notifications(content)
+            changed = True
+        if "NotificationSettingsScreen" not in content:
+            print("[web-patch-2.32.1] Applying Notification Settings clean screen patch...")
+            content = patch_notification_settings_clean(content)
+            changed = True
 
         if changed:
             with open(file_path, "w", encoding="utf-8", newline="\n") as f:
                 f.write(content)
             print("[web-patch-2.32.1] Successfully updated patches in main.js!")
         else:
-            print("[web-patch-2.32.1] main.js already fully patched (v2.32.1 Android UI + Smart Marketplace V3 + RootEB + BackupRestore + Notifications + Contextual Search + Message Jump)")
+            print("[web-patch-2.32.1] main.js already fully patched (v2.32.1 Android UI + Smart Marketplace V3 + RootEB + BackupRestore + Contextual Search + Message Jump)")
         return True
     # 1a. g_() system theme resolver via window.Android.getTheme()
     content = must_replace(
@@ -1099,15 +1173,6 @@ def patch_main(file_path):
         'MermaidDiagramComponent:fDd,WebEffects:g.WebEffects,diagnosticsService:g.diagnosticsService,settingsSyncedState:g.settingsSyncedState}))))})();'
     )
     content = must_replace(content, old_root_render, new_root_render, "root_error_boundary")
-
-    content = patch_backup_restore(content)
-    content = patch_notification_settings(content)
-    content = patch_task_progress_notifications(content)
-    content = patch_task_alerts_completion_notifications(content)
-    content = patch_convo_switcher(content)
-    content = patch_terminal_touch_scroll(content)
-    content = patch_conversation_search_jump(content)
-    content = patch_contextual_search_icon(content)
 
     assert "Desktop Mode" not in content, "Desktop Mode must not be present in Android main.js"
 

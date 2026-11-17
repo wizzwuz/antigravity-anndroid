@@ -828,6 +828,45 @@ var cLb=()=>B.createElement(NotificationSettingsScreen,null);"""
     content = must_replace(content, old_clb, notification_settings_comp, "replace_old_cLb_with_NotificationSettingsScreen")
     return content
 
+def patch_lexical_android_select_delete(content):
+    if "window.__agySelectAllInEditor=" in content:
+        return content
+
+    # 1. Fix Android Chrome Lexical beforeinput deletion:
+    #    - Never skip DELETE_CHARACTER_COMMAND when selection is non-collapsed (e.g. Select All with skills)
+    #    - Handle NodeSelection (xL(g)) on deleteContentBackward / deleteContentForward / deleteByCut / deleteContent
+    old_eob = (
+        'if(b==="deleteContentBackward"){if(g===null){var h=eL();if(!cL(h))return!0;KK(h.clone())}if(cL(g)){b=g.anchor.key===g.focus.key;if(f.lastKeyCode==="MediaLast"&&a.timeStamp<f.lastKeyDownTimeStamp+\n'
+        '30&&d.isComposing()&&b)qL(null),f.lastKeyDownTimeStamp=0,setTimeout(()=>{GK(d,()=>{qL(null)})},30),cL(g)&&(a=SK(g.anchor),a.markDirty(),jJ(VK(a),"Anchor node must be a TextNode"),wpb(g,a));else{qL(null);if(qJ&&c!==null&&!c.collapsed&&(rL(g,c),!g.isCollapsed()))return a.preventDefault(),g.removeText(),!0;a.preventDefault();c=SK(g.anchor);a=c.getTextContent();c=c.canInsertTextAfter();a=g.anchor.offset===0&&g.focus.offset===a.length;(a=sJ&&b&&!a&&c)&&g.isCollapsed()&&(a=!sL(Dpb(g.anchor)));a||(FK(d,\n'
+        'AJ,!0),g=IK(),sJ&&cL(g)&&g.isCollapsed()&&(f.postDeleteSelectionToRestore=g,setTimeout(()=>f.postDeleteSelectionToRestore=null)))}return!0}}if(!cL(g))return!0;'
+    )
+    new_eob = (
+        'if(b==="deleteContentBackward"){if(g===null){var h=eL();if(!cL(h)&&!xL(h))return!0;g=h.clone();KK(g)}if(xL(g)){a.preventDefault();qL(null);FK(d,AJ,!0);return!0}if(cL(g)){b=g.anchor.key===g.focus.key;if(f.lastKeyCode==="MediaLast"&&a.timeStamp<f.lastKeyDownTimeStamp+\n'
+        '30&&d.isComposing()&&b)qL(null),f.lastKeyDownTimeStamp=0,setTimeout(()=>{GK(d,()=>{qL(null)})},30),cL(g)&&(a=SK(g.anchor),a.markDirty(),jJ(VK(a),"Anchor node must be a TextNode"),wpb(g,a));else{qL(null);if(qJ&&c!==null&&!c.collapsed&&(rL(g,c),!g.isCollapsed()))return a.preventDefault(),g.removeText(),!0;a.preventDefault();c=SK(g.anchor);a=c.getTextContent();c=c.canInsertTextAfter();a=g.anchor.offset===0&&g.focus.offset===a.length;a=g.isCollapsed()&&sJ&&b&&!a&&c&&!sL(Dpb(g.anchor));a||(FK(d,\n'
+        'AJ,!0),g=IK(),sJ&&cL(g)&&g.isCollapsed()&&(f.postDeleteSelectionToRestore=g,setTimeout(()=>f.postDeleteSelectionToRestore=null)))}return!0}}if(xL(g)&&(b==="deleteContentForward"||b==="deleteContent"||b==="deleteByCut"||b==="deleteWordBackward"||b==="deleteHardLineBackward"||b==="deleteSoftLineBackward")){a.preventDefault();qL(null);FK(d,AJ,b!=="deleteContentForward");return!0}if(!cL(g))return!0;'
+    )
+    content = must_replace(content, old_eob, new_eob, "lexical_android_select_all_delete_eob")
+
+    # 2. Expose window.__agySelectAllInEditor to select root(0..N) including leading/trailing skill pills
+    old_dob_end = 'else c=d.select(0,LK(d)),KK(CM(c));return!0},0)'
+    new_dob_end = (
+        'else c=d.select(0,LK(d)),KK(CM(c));return!0},0)'
+    )
+    old_cbb_after = 'function dBb(a){tO(()=>xJ(cBb(a),RAb(a)),[a])};'
+    new_cbb_after = (
+        'function dBb(a){tO(()=>xJ(cBb(a),RAb(a)),[a])};'
+        'if(typeof window!=="undefined")window.__agySelectAllInEditor=function(){try{'
+        'var el=document.activeElement;'
+        'var ed=el&&(el.__lexicalEditor||(el.closest&&el.closest(\'[contenteditable="true"]\')&&el.closest(\'[contenteditable="true"]\').__lexicalEditor));'
+        'if(!ed){var bx=document.getElementById("antigravity.agentSidePanelInputBox");var ce=bx&&bx.querySelector(\'[contenteditable="true"]\');ed=ce&&ce.__lexicalEditor;}'
+        'if(!ed)return!1;'
+        'ed.update(function(){var r=JK();r.select(0,LK(r));},{discrete:!0});'
+        'return!0;}catch(_){return!1;}};'
+    )
+    content = must_replace(content, old_cbb_after, new_cbb_after, "lexical_expose_select_all_helper")
+
+    return content
+
 def patch_main(file_path):
     if not os.path.isfile(file_path):
         print(f"[web-patch-2.32.1] file not found: {file_path}", file=sys.stderr)
@@ -873,6 +912,10 @@ def patch_main(file_path):
         if "NotificationSettingsScreen" not in content:
             print("[web-patch-2.32.1] Applying Notification Settings clean screen patch...")
             content = patch_notification_settings_clean(content)
+            changed = True
+        if "window.__agySelectAllInEditor=" not in content:
+            print("[web-patch-2.32.1] Applying Lexical Android Select All & Delete (including skills) patch...")
+            content = patch_lexical_android_select_delete(content)
             changed = True
 
         if changed:
@@ -1257,6 +1300,7 @@ def patch_main(file_path):
         'MermaidDiagramComponent:fDd,WebEffects:g.WebEffects,diagnosticsService:g.diagnosticsService,settingsSyncedState:g.settingsSyncedState}))))})();'
     )
     content = must_replace(content, old_root_render, new_root_render, "root_error_boundary")
+    content = patch_lexical_android_select_delete(content)
 
     assert "Desktop Mode" not in content, "Desktop Mode must not be present in Android main.js"
 

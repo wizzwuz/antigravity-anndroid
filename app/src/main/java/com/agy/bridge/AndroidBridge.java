@@ -199,7 +199,64 @@ public final class AndroidBridge {
     @JavascriptInterface
     public boolean postNotificationAuth(String authToken, String title, String message, String tag) {
         if (!isAuthorized(authToken)) return false;
-        return notification.post(title, message, tag);
+        com.agy.gateway.handlers.NotificationHandler.post(appContext, null, title, message, null, false, -1, 0, tag);
+        return true;
+    }
+
+    @JavascriptInterface
+    public boolean postNotificationAuth(String authToken, String channel, String title, String message, String cascadeId, boolean ongoing, int progress) {
+        if (!isAuthorized(authToken)) return false;
+        com.agy.gateway.handlers.NotificationHandler.post(appContext, channel, title, message, cascadeId, ongoing, progress, 0, null);
+        return true;
+    }
+
+    @JavascriptInterface
+    public void postNotification(String channel, String title, String message, String cascadeId, boolean ongoing, int progress) {
+        com.agy.gateway.handlers.NotificationHandler.post(appContext, channel, title, message, cascadeId, ongoing, progress, 0, null);
+    }
+
+    @JavascriptInterface
+    public void cancelNotificationAuth(String authToken, String tag, int id) {
+        if (!isAuthorized(authToken)) return;
+        com.agy.gateway.handlers.NotificationHandler.cancel(appContext, tag, id);
+    }
+
+    @JavascriptInterface
+    public void cancelNotification(String tag, int id) {
+        com.agy.gateway.handlers.NotificationHandler.cancel(appContext, tag, id);
+    }
+
+    @JavascriptInterface
+    public void openNotificationSettingsAuth(String authToken) {
+        if (!isAuthorized(authToken)) return;
+        com.agy.gateway.handlers.NotificationHandler.openNotificationSettings(appContext);
+    }
+
+    @JavascriptInterface
+    public void openNotificationSettings() {
+        com.agy.gateway.handlers.NotificationHandler.openNotificationSettings(appContext);
+    }
+
+    @JavascriptInterface
+    public String getNotificationSettingsAuth(String authToken) {
+        if (!isAuthorized(authToken)) return "{}";
+        return com.agy.gateway.handlers.NotificationHandler.getSettingsJson(appContext);
+    }
+
+    @JavascriptInterface
+    public String getNotificationSettings() {
+        return com.agy.gateway.handlers.NotificationHandler.getSettingsJson(appContext);
+    }
+
+    @JavascriptInterface
+    public boolean setNotificationSettingAuth(String authToken, String key, boolean value) {
+        if (!isAuthorized(authToken)) return false;
+        return com.agy.gateway.handlers.NotificationHandler.setSetting(appContext, key, value);
+    }
+
+    @JavascriptInterface
+    public boolean setNotificationSetting(String key, boolean value) {
+        return com.agy.gateway.handlers.NotificationHandler.setSetting(appContext, key, value);
     }
 
     @JavascriptInterface

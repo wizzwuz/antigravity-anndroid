@@ -57,5 +57,6 @@ if [ "$DEV_MODE" -eq 1 ]; then
     TARGET_MANIFEST="$BUILD_DIR/AndroidManifest.xml"
     cp -f "$MANIFEST_XML" "$TARGET_MANIFEST"
     sed -i "s|package=\"$PKG\"|package=\"$PKG_DEV\"|g" "$TARGET_MANIFEST"
+    sed -i "s|android:authorities=\"$PKG.updateprovider\"|android:authorities=\"$PKG_DEV.updateprovider\"|g" "$TARGET_MANIFEST"
     sed -i "s|<application|<application android:debuggable=\"true\"|g" "$TARGET_MANIFEST"
 fi

@@ -323,6 +323,7 @@ public final class EngineBridge {
                         mcpCfg.delete();
                     } else {
                         String updated = root.toString(2)
+                                .replace("/data/user/0/com.agy.wizzwuz/files", homePath)
                                 .replace("/data/user/0/com.agy/files", homePath) + "\n";
                         com.agy.util.AtomicFileWriter.writeText(mcpCfg, updated);
                     }
@@ -426,8 +427,9 @@ public final class EngineBridge {
                     // Skip binary ELF files
                     if (!(raw.length >= 4 && raw[0] == 0x7F && raw[1] == 'E' && raw[2] == 'L' && raw[3] == 'F')) {
                         String txt = new String(raw, 0, off, StandardCharsets.UTF_8);
-                        if (txt.indexOf('\r') >= 0 || txt.contains("/data/user/0/com.agy/files")) {
+                        if (txt.indexOf('\r') >= 0 || txt.contains("/data/user/0/com.agy/files") || txt.contains("/data/user/0/com.agy.wizzwuz/files")) {
                             String clean = txt.replace("\r\n", "\n")
+                                    .replace("/data/user/0/com.agy.wizzwuz/files", homePath)
                                     .replace("/data/user/0/com.agy/files", homePath);
                             com.agy.util.AtomicFileWriter.writeText(f, clean);
                         }

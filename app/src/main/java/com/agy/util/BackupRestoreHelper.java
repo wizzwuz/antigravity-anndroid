@@ -39,7 +39,13 @@ public final class BackupRestoreHelper {
     }
 
     public static File getGeminiDir(Context context) {
-        File baseDir = context != null ? context.getFilesDir() : new File("/data/user/0/com.agy/files");
+        File baseDir = context != null ? context.getFilesDir() : new File("/data/user/0/com.agy.wizzwuz/files");
+        if (!baseDir.exists()) {
+            File legacyDir = new File("/data/user/0/com.agy/files");
+            if (legacyDir.exists()) {
+                baseDir = legacyDir;
+            }
+        }
         File geminiDir = new File(baseDir, ".gemini/antigravity-app");
         if (!geminiDir.exists()) {
             File fallback = new File("/data/user/0/com.krmobdev.antigravity/files/.gemini/antigravity-app");
@@ -51,7 +57,9 @@ public final class BackupRestoreHelper {
     }
 
     public static File getBaseFilesDir(Context context) {
-        return context != null ? context.getFilesDir() : new File("/data/user/0/com.agy/files");
+        if (context != null) return context.getFilesDir();
+        File preferred = new File("/data/user/0/com.agy.wizzwuz/files");
+        return preferred.exists() ? preferred : new File("/data/user/0/com.agy/files");
     }
 
     // =========================================================================

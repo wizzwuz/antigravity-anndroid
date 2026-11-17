@@ -329,7 +329,7 @@ public final class ShellBridgeInstaller {
     }
 
     public static synchronized void writeTorchShims(File bin, android.content.Context context) {
-        String pkg = (context != null) ? context.getPackageName() : "com.agy";
+        String pkg = (context != null) ? context.getPackageName() : "com.agy.wizzwuz";
         String script = "#!/system/bin/sh\n"
                 + "# AGY Torch / Flashlight shim\n"
                 + "STATE=\"$1\"\n"
@@ -513,7 +513,7 @@ public final class ShellBridgeInstaller {
      * and attempts direct broadcast/intent dispatch via /system/bin/am.
      */
     private static void writeOpenUrlShim(File bridge, android.content.Context context) {
-        String pkg = (context != null) ? context.getPackageName() : "com.agy";
+        String pkg = (context != null) ? context.getPackageName() : "com.agy.wizzwuz";
         File filesDir = (context != null) ? context.getFilesDir() : bridge.getParentFile().getParentFile();
         String queuePath = ShellQuote.quote(new File(filesDir, ".open_url_queue").getAbsolutePath());
 

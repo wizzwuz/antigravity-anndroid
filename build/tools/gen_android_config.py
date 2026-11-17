@@ -55,18 +55,31 @@ def main(argv):
     os.makedirs(pkg_dir, exist_ok=True)
     os.makedirs(res_values_dir, exist_ok=True)
 
-    build_config_path = os.path.join(pkg_dir, "BuildConfig.java")
-    with open(build_config_path, "w", encoding="utf-8") as f:
-        f.write("package %s;\n\n" % pkg)
+    legacy_pkg_dir = os.path.join(outdir, "com", "agy")
+    os.makedirs(legacy_pkg_dir, exist_ok=True)
+
+    build_config_body = (
+        "    private BuildConfig() {}\n\n"
+        "    public static final int PORT=%s;\n" % port +
+        "    public static final int PORT_DEV=%s;\n" % port_dev +
+        "    public static final String CORE_VERSION=%s;\n" % java_string(core_version) +
+        "    public static final String OAUTH_SCHEME=%s;\n" % java_string(oauth_scheme) +
+        "    public static final String APP_NAME=%s;\n" % java_string(app_name) +
+        "    public static final int MIN_API=%s;\n" % min_api +
+        "}\n"
+    )
+
+    with open(os.path.join(legacy_pkg_dir, "BuildConfig.java"), "w", encoding="utf-8") as f:
+        f.write("package com.agy;\n\n")
         f.write("public final class BuildConfig {\n")
-        f.write("    private BuildConfig() {}\n\n")
-        f.write("    public static final int PORT=%s;\n" % port)
-        f.write("    public static final int PORT_DEV=%s;\n" % port_dev)
-        f.write("    public static final String CORE_VERSION=%s;\n" % java_string(core_version))
-        f.write("    public static final String OAUTH_SCHEME=%s;\n" % java_string(oauth_scheme))
-        f.write("    public static final String APP_NAME=%s;\n" % java_string(app_name))
-        f.write("    public static final int MIN_API=%s;\n" % min_api)
-        f.write("}\n")
+        f.write(build_config_body)
+
+    if pkg != "com.agy":
+        build_config_path = os.path.join(pkg_dir, "BuildConfig.java")
+        with open(build_config_path, "w", encoding="utf-8") as f:
+            f.write("package %s;\n\n" % pkg)
+            f.write("public final class BuildConfig {\n")
+            f.write(build_config_body)
 
     gen_xml_path = os.path.join(res_values_dir, "gen.xml")
     with open(gen_xml_path, "w", encoding="utf-8") as f:

@@ -468,6 +468,208 @@ def patch_contextual_search_icon(content):
     )
 
     return content
+def patch_convo_switcher(content):
+    if "window.__agyOpenConversation=" in content:
+        return content
+    target = 'N_=()=>{var a=mZ();return(0,B.useCallback)(b=>{b&&a(b)},[a])}'
+    replacement = (
+        'N_=()=>{var a=mZ(),nav=(0,B.useCallback)(b=>{b&&a(b)},[a]);'
+        'if(typeof window!=="undefined"){'
+        'window.__agyOpenConversation=function(cid){try{if(cid){nav(cid);return!0}}catch(_){}try{window.location.hash="#/cascade/"+cid}catch(_){}};'
+        'if(window.__agyPendingCascadeId){var pCid=window.__agyPendingCascadeId;delete window.__agyPendingCascadeId;setTimeout(function(){window.__agyOpenConversation(pCid)},100);}'
+        '}'
+        'return nav}'
+    )
+    return must_replace(content, target, replacement, "N_convo_switcher_hook")
+
+
+def patch_task_progress_notifications(content):
+    if "__agyActiveTasks" in content:
+        return content
+    target = 'function cl(a){return!a.killed&&(a.notFullyIdle||a.status===J.CascadeRunStatus.RUNNING)}'
+    replacement = (
+        'function cl(a){'
+        'var r=!a.killed&&(a.notFullyIdle||a.status===J.CascadeRunStatus.RUNNING);'
+        'try{'
+        'if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"&&a&&a.cascadeId){'
+        'if(!window.__agyActiveTasks)window.__agyActiveTasks=new Map();'
+        'var prev=window.__agyActiveTasks.get(a.cascadeId);'
+        'if(r&&!prev){'
+        'window.__agyActiveTasks.set(a.cascadeId,!0);'
+        'var title="Antigravity Task Progress";'
+        'var msg="Running tasks in "+(a.title||"Conversation");'
+        'window.Android.postNotification("task_progress",title,msg,a.cascadeId,!0,-1);'
+        '}else if(!r&&prev){'
+        'window.__agyActiveTasks.delete(a.cascadeId);'
+        'if(typeof window.Android.cancelNotification==="function"){'
+        'window.Android.cancelNotification("cascade_prog_"+a.cascadeId,0);'
+        '}'
+        '}'
+        '}'
+        '}catch(_){}'
+        'return r}'
+    )
+    return must_replace(content, target, replacement, "cl_task_progress_notification")
+
+
+def patch_task_alerts_completion_notifications(content):
+    if "__agAlertsCompletionInjected" in content:
+        return content
+    target = 'var g=new Notification(a.title,{body:a.body,silent:f,tag:a.id});'
+    replacement = (
+        'var g=new Notification(a.title,{body:a.body,silent:f,tag:a.id});/*__agAlertsCompletionInjected*/'
+        'try{'
+        'if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"){'
+        'var cid=(a.payload&&a.payload.cascadeId)||"";'
+        'window.Android.postNotification("task_alerts_completion",a.title||"Antigravity Task Alerts and Completion",a.body||"",cid,!1,-1);'
+        '}'
+        '}catch(_){}'
+    )
+    return must_replace(content, target, replacement, "notification_task_alerts_completion")
+
+
+def patch_notification_settings(content):
+    if "NotificationSettingsScreen" in content:
+        return content
+
+    content = must_replace(
+        content,
+        '["Backup and Restore","Backup and Restore"]',
+        '["Backup and Restore","Backup and Restore"],["Notification Settings","Notification Settings"]',
+        "mEb_notification_settings_label",
+    )
+
+    content = must_replace(
+        content,
+        '"Backup and Restore"];',
+        '"Backup and Restore","Notification Settings"];',
+        "zPb_mobile_notification_settings_list",
+    )
+
+    content = must_replace(
+        content,
+        'case "Backup and Restore":return B.createElement(BackupRestoreScreen,null);',
+        'case "Backup and Restore":return B.createElement(BackupRestoreScreen,null);case "Notification Settings":return B.createElement(NotificationSettingsScreen,null);',
+        "vPb_notification_screen_resolver",
+    )
+
+    content = must_replace(
+        content,
+        'B.createElement(rV,{text:"Backup and Restore",label:IQ("Backup and Restore"),onClick:()=>{M(ou("Backup and Restore"))},isActive:L&&c==="Backup and Restore"})',
+        'B.createElement(rV,{text:"Backup and Restore",label:IQ("Backup and Restore"),onClick:()=>{M(ou("Backup and Restore"))},isActive:L&&c==="Backup and Restore"}),B.createElement(rV,{text:"Notification Settings",label:IQ("Notification Settings"),onClick:()=>{M(ou("Notification Settings"))},isActive:L&&c==="Notification Settings"})',
+        "YRb_desktop_notification_settings_sidebar",
+    )
+
+    content = must_replace(
+        content,
+        'B.createElement("div",{style:{display:c==="Backup and Restore"?"block":"none"}},B.createElement(BackupRestoreScreen,null))',
+        'B.createElement("div",{style:{display:c==="Backup and Restore"?"block":"none"}},B.createElement(BackupRestoreScreen,null)),B.createElement("div",{style:{display:c==="Notification Settings"?"block":"none"}},B.createElement(NotificationSettingsScreen,null))',
+        "iSb_desktop_notification_view_container",
+    )
+
+    notification_settings_comp = '''var NotificationSettingsScreen=()=>{
+var [progressEnabled,setProgressEnabled]=(0,B.useState)(!0);
+var [alertsEnabled,setAlertsEnabled]=(0,B.useState)(!0);
+var [testStatus,setTestStatus]=(0,B.useState)("");
+(0,B.useEffect)(()=>{
+try{
+if(typeof window!=="undefined"&&window.Android&&typeof window.Android.getNotificationSettings==="function"){
+var s=JSON.parse(window.Android.getNotificationSettings()||"{}");
+if(s.progress_enabled!==void 0)setProgressEnabled(!!s.progress_enabled);
+if(s.alerts_enabled!==void 0)setAlertsEnabled(!!s.alerts_enabled);
+}
+}catch(_){}
+},[]);
+var onToggleProgress=(e)=>{
+var v=e.target.checked;
+setProgressEnabled(v);
+try{window.Android&&window.Android.setNotificationSetting&&window.Android.setNotificationSetting("progress_enabled",v)}catch(_){}
+};
+var onToggleAlerts=(e)=>{
+var v=e.target.checked;
+setAlertsEnabled(v);
+try{window.Android&&window.Android.setNotificationSetting&&window.Android.setNotificationSetting("alerts_enabled",v)}catch(_){}
+};
+var onOpenSystemSettings=()=>{
+try{window.Android&&window.Android.openNotificationSettings&&window.Android.openNotificationSettings()}catch(_){}
+};
+var onTestProgress=()=>{
+setTestStatus("Dispatched test progress notification...");
+try{
+var cid="demo_"+Math.random().toString(36).substring(2,7);
+window.Android&&window.Android.postNotification&&window.Android.postNotification(
+"task_progress",
+"Antigravity Task Progress",
+"Running task in test conversation",
+cid,
+!0,
+45
+);
+setTimeout(()=>{
+setTestStatus("Active in notification shade. Tap to open or wait 5s to auto-clear.");
+setTimeout(()=>{
+window.Android&&window.Android.cancelNotification&&window.Android.cancelNotification("cascade_prog_"+cid,0);
+setTestStatus("");
+},5000);
+},600);
+}catch(e){setTestStatus("Error: "+e.message)}
+};
+var onTestAlert=()=>{
+setTestStatus("Dispatched test floating alert notification...");
+try{
+var cid="demo_"+Math.random().toString(36).substring(2,7);
+window.Android&&window.Android.postNotification&&window.Android.postNotification(
+"task_alerts_completion",
+"Antigravity Task Alerts and Completion",
+"Task completed successfully in background!",
+cid,
+!1,
+-1
+);
+setTimeout(()=>setTestStatus("Floating heads-up notification sent!"),400);
+}catch(e){setTestStatus("Error: "+e.message)}
+};
+return B.createElement("div",{className:"max-w-2xl mx-auto py-6 px-4 space-y-6"},
+B.createElement("div",{className:"space-y-1.5"},
+B.createElement("h2",{className:"text-2xl font-bold tracking-tight text-foreground m-0"},"Notification Settings"),
+B.createElement("p",{className:"text-sm text-muted-foreground m-0"},"Configure background task progress and floating alert notifications.")),
+testStatus&&B.createElement("div",{className:"p-3 rounded-xl bg-primary/10 border border-primary/20 text-xs text-primary font-medium"},testStatus),
+B.createElement("div",{className:"space-y-4"},
+B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},
+B.createElement("div",{className:"flex items-start justify-between gap-3"},
+B.createElement("div",{className:"space-y-0.5"},
+B.createElement("div",{className:"font-semibold text-base text-foreground"},"Antigravity Task Progress"),
+B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},
+"A persistent notification showing Antigravity running tasks of different conversations as separate notifications in the system shade.")),
+B.createElement("input",{type:"checkbox",checked:progressEnabled,onChange:onToggleProgress,className:"h-5 w-5 rounded border-border accent-primary cursor-pointer mt-1"})),
+B.createElement("div",{className:"pt-1"},
+B.createElement(sz,{variant:"secondary",size:"sm",onClick:onTestProgress,className:"flex items-center gap-1.5 text-xs"},
+B.createElement(nq,{name:"play_arrow",size:14}),"Test Progress Notification"))),
+B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},
+B.createElement("div",{className:"flex items-start justify-between gap-3"},
+B.createElement("div",{className:"space-y-0.5"},
+B.createElement("div",{className:"font-semibold text-base text-foreground"},"Antigravity Task Alerts and Completion"),
+B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},
+"A floating notification showing any Alerts or Completion of tasks of all running conversations as separate notifications.")),
+B.createElement("input",{type:"checkbox",checked:alertsEnabled,onChange:onToggleAlerts,className:"h-5 w-5 rounded border-border accent-primary cursor-pointer mt-1"})),
+B.createElement("div",{className:"pt-1"},
+B.createElement(sz,{variant:"secondary",size:"sm",onClick:onTestAlert,className:"flex items-center gap-1.5 text-xs"},
+B.createElement(nq,{name:"notifications_active",size:14}),"Test Floating Alert"))),
+B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},
+B.createElement("div",{className:"space-y-0.5"},
+B.createElement("div",{className:"font-semibold text-base text-foreground"},"Android System Notification Channels"),
+B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},
+"Configure system sound, vibration, popup banners, and lockscreen privacy for each notification channel in Android Settings.")),
+B.createElement("div",{className:"pt-1"},
+B.createElement(sz,{variant:"primary",size:"md",onClick:onOpenSystemSettings,className:"flex items-center gap-1.5 text-sm"},
+B.createElement(nq,{name:"tune",size:16}),"Manage in Android Settings"))))
+);
+};
+'''
+    content = must_replace(content, 'var UKb=', notification_settings_comp + 'var UKb=', "UKb_inject_NotificationSettingsScreen")
+    return content
+
+
 def patch_main(file_path):
     if not os.path.isfile(file_path):
         print(f"[web-patch-2.32.1] file not found: {file_path}", file=sys.stderr)
@@ -481,6 +683,22 @@ def patch_main(file_path):
         if "BackupRestoreScreen" not in content:
             print("[web-patch-2.32.1] Applying BackupRestoreScreen patch...")
             content = patch_backup_restore(content)
+            changed = True
+        if "NotificationSettingsScreen" not in content:
+            print("[web-patch-2.32.1] Applying Notification Settings patch...")
+            content = patch_notification_settings(content)
+            changed = True
+        if "__agyActiveTasks" not in content:
+            print("[web-patch-2.32.1] Applying Task Progress Notifications patch...")
+            content = patch_task_progress_notifications(content)
+            changed = True
+        if "__agAlertsCompletionInjected" not in content:
+            print("[web-patch-2.32.1] Applying Task Alerts and Completion Notifications patch...")
+            content = patch_task_alerts_completion_notifications(content)
+            changed = True
+        if "window.__agyOpenConversation=" not in content:
+            print("[web-patch-2.32.1] Applying Conversation Switcher hook patch...")
+            content = patch_convo_switcher(content)
             changed = True
         if 'data-testid="terminal-surface"' not in content and 'data-testid=\"terminal-surface\"' not in content:
             print("[web-patch-2.32.1] Applying Terminal touch scroll patch...")
@@ -504,7 +722,7 @@ def patch_main(file_path):
                 f.write(content)
             print("[web-patch-2.32.1] Successfully updated patches in main.js!")
         else:
-            print("[web-patch-2.32.1] main.js already fully patched (v2.32.1 Android UI + Smart Marketplace V3 + RootEB + BackupRestore + Contextual Search + Message Jump)")
+            print("[web-patch-2.32.1] main.js already fully patched (v2.32.1 Android UI + Smart Marketplace V3 + RootEB + BackupRestore + Notifications + Contextual Search + Message Jump)")
         return True
     # 1a. g_() system theme resolver via window.Android.getTheme()
     content = must_replace(
@@ -881,6 +1099,15 @@ def patch_main(file_path):
         'MermaidDiagramComponent:fDd,WebEffects:g.WebEffects,diagnosticsService:g.diagnosticsService,settingsSyncedState:g.settingsSyncedState}))))})();'
     )
     content = must_replace(content, old_root_render, new_root_render, "root_error_boundary")
+
+    content = patch_backup_restore(content)
+    content = patch_notification_settings(content)
+    content = patch_task_progress_notifications(content)
+    content = patch_task_alerts_completion_notifications(content)
+    content = patch_convo_switcher(content)
+    content = patch_terminal_touch_scroll(content)
+    content = patch_conversation_search_jump(content)
+    content = patch_contextual_search_icon(content)
 
     assert "Desktop Mode" not in content, "Desktop Mode must not be present in Android main.js"
 

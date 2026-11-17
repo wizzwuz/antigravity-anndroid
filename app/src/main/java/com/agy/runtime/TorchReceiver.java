@@ -17,7 +17,9 @@ public class TorchReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (intent == null || !"com.agy.ACTION_TORCH".equals(intent.getAction())) {
+        if (intent == null || intent.getAction() == null
+                || (!"com.agy.ACTION_TORCH".equals(intent.getAction())
+                    && !"com.agy.wizzwuz.ACTION_TORCH".equals(intent.getAction()))) {
             return;
         }
         boolean enable = intent.getBooleanExtra("enabled", true);

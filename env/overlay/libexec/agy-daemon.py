@@ -51,7 +51,7 @@ def _app_pkg():
     for p in reversed(parts):
         if p.startswith("com."):
             return p
-    return "com.agy"
+    return "com.agy.wizzwuz"
 
 def _find_rish():
     fdir = _files_dir()

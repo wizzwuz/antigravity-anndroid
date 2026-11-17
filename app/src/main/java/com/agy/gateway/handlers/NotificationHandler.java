@@ -182,7 +182,9 @@ public final class NotificationHandler {
         intent.setAction("com.agy.action.OPEN_CONVERSATION");
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         if (cascadeId != null && !cascadeId.trim().isEmpty()) {
-            intent.putExtra("cascade_id", cascadeId.trim());
+            String cid = cascadeId.trim();
+            intent.putExtra("cascade_id", cid);
+            intent.setData(android.net.Uri.parse("agy://conversation/" + cid));
         }
 
         int pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT;

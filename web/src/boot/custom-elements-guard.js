@@ -51,4 +51,16 @@ if (typeof window !== "undefined") {
       window.Notification = AGYNotification;
     } catch (_) {}
   })();
+
+  window.__agyPendingCascadeId = window.__agyPendingCascadeId || null;
+  if (typeof window.__agyOpenConversation !== "function") {
+    window.__agyOpenConversation = function (cid) {
+      if (!cid) return;
+      var c = String(cid).trim();
+      window.__agyPendingCascadeId = c;
+      if (typeof window.__agySwitchConversation === "function") {
+        try { window.__agySwitchConversation(c); } catch (_) {}
+      }
+    };
+  }
 }

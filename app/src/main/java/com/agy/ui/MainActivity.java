@@ -145,9 +145,9 @@ public class MainActivity extends Activity
         super.onCreate(savedInstanceState);
         activeActivity = this;
 
-        Intent startIntent = getIntent();
-        if (startIntent != null && startIntent.hasExtra("cascade_id")) {
-            pendingCascadeId = startIntent.getStringExtra("cascade_id");
+        final String startCid = extractCascadeId(getIntent());
+        if (startCid != null && !startCid.isEmpty()) {
+            pendingCascadeId = startCid;
         }
 
         requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -247,6 +247,25 @@ public class MainActivity extends Activity
         }
     }
 
+    private String extractCascadeId(Intent intent) {
+        if (intent == null) return null;
+        if (intent.hasExtra("cascade_id")) {
+            String cid = intent.getStringExtra("cascade_id");
+            if (cid != null && !cid.trim().isEmpty()) return cid.trim();
+        }
+        if (intent.getData() != null) {
+            android.net.Uri data = intent.getData();
+            if ("agy".equalsIgnoreCase(data.getScheme()) && "conversation".equalsIgnoreCase(data.getHost())) {
+                String path = data.getPath();
+                if (path != null && !path.isEmpty()) {
+                    String cid = path.replaceFirst("^/", "").trim();
+                    if (!cid.isEmpty()) return cid;
+                }
+            }
+        }
+        return null;
+    }
+
     /** Idempotent; called by AndroidBridge.onUiReady() on the main thread. */
     public void dismissSplash() {
         Log.i(TAG, "dismissSplash: fading out splashView (280ms)");
@@ -260,26 +279,38 @@ public class MainActivity extends Activity
                     openConversationInWebView(cid);
                 }
             }, 300);
+            handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    openConversationInWebView(cid);
+                }
+            }, 750);
         }
     }
 
     public void openConversationInWebView(final String cascadeId) {
-        if (cascadeId == null || cascadeId.isEmpty()) return;
+        if (cascadeId == null || cascadeId.trim().isEmpty()) return;
+        final String cid = cascadeId.trim();
+        pendingCascadeId = cid;
         if (webViewHost != null && webViewHost.getWebView() != null) {
-            webViewHost.getWebView().post(new Runnable() {
+            final Runnable openTask = new Runnable() {
                 @Override
                 public void run() {
-                    String jsArg = org.json.JSONObject.quote(cascadeId);
-                    webViewHost.getWebView().evaluateJavascript(
-                            "(function() {" +
+                    if (webViewHost == null || webViewHost.getWebView() == null) return;
+                    String jsArg = org.json.JSONObject.quote(cid);
+                    String script = "(function() {" +
                             "  if (typeof window.__agyOpenConversation === 'function') {" +
                             "    window.__agyOpenConversation(" + jsArg + ");" +
                             "  } else {" +
                             "    window.__agyPendingCascadeId = " + jsArg + ";" +
                             "  }" +
-                            "})();", null);
+                            "})();";
+                    webViewHost.getWebView().evaluateJavascript(script, null);
                 }
-            });
+            };
+            webViewHost.getWebView().post(openTask);
+            handler.postDelayed(openTask, 350);
+            handler.postDelayed(openTask, 800);
         }
     }
 
@@ -328,12 +359,10 @@ public class MainActivity extends Activity
         super.onNewIntent(intent);
         setIntent(intent);
         handleUpdateNotificationIntent(intent);
-        if (intent != null && intent.hasExtra("cascade_id")) {
-            final String cid = intent.getStringExtra("cascade_id");
-            if (cid != null && !cid.isEmpty()) {
-                pendingCascadeId = cid;
-                openConversationInWebView(cid);
-            }
+        final String cid = extractCascadeId(intent);
+        if (cid != null && !cid.isEmpty()) {
+            pendingCascadeId = cid;
+            openConversationInWebView(cid);
         }
     }
 

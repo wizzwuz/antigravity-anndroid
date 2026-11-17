@@ -469,6 +469,50 @@ def patch_contextual_search_icon(content):
 
     return content
 
+def patch_convo_switcher(content):
+    if "window.__agyOpenConversation=" in content:
+        return content
+
+    # 1. Hook b$b to expose window.__agySwitchConversation and flush pending cascade ID
+    old_bbb = "var b$b=()=>{var a=Al(),b=N_();(0,B.useEffect)(()=>{a?.rpc"
+    new_bbb = (
+        'var b$b=()=>{var a=Al(),b=N_();(0,B.useEffect)(()=>{'
+        'try{'
+        'window.__agySwitchConversation=b;'
+        'if(window.__agyPendingCascadeId){'
+        'var _p=window.__agyPendingCascadeId;'
+        'window.__agyPendingCascadeId=null;'
+        'setTimeout(()=>{b(_p);typeof rad==="function"&&rad(_p)},100);'
+        '}'
+        '}catch(_){}'
+        'a?.rpc'
+    )
+    content = must_replace(content, old_bbb, new_bbb, "bbb_expose_switch_conversation")
+
+    # 2. Hook rad and define window.__agyOpenConversation
+    old_rad = 'function rad(a){r7&&r7.navigate({to:"/c/$cascadeId",params:{cascadeId:a}})}'
+    new_rad = (
+        'function rad(a){if(r7){r7.navigate({to:"/c/$cascadeId",params:{cascadeId:a}})}}'
+        'window.__agyOpenConversation=function(a){if(!a)return;var c=String(a).trim();'
+        'try{if(typeof window.__agySwitchConversation==="function"){window.__agySwitchConversation(c);}}catch(_){}'
+        'try{if(r7){r7.navigate({to:"/c/$cascadeId",params:{cascadeId:c}});}else{window.__agyPendingCascadeId=c;}}catch(_){window.__agyPendingCascadeId=c;}};'
+    )
+    content = must_replace(content, old_rad, new_rad, "rad_open_conversation_global")
+
+    # 3. Hook router creation in zad to flush pending cascade ID
+    old_zad_router = "r7=n=new $jb({routeTree:nad,history:p,InnerWrap:h,context:W$c,basepath:n.basepath,parseSearch:pad,stringifySearch:qad})"
+    new_zad_router = (
+        'r7=n=new $jb({routeTree:nad,history:p,InnerWrap:h,context:W$c,basepath:n.basepath,parseSearch:pad,stringifySearch:qad});'
+        'try{if(window.__agyPendingCascadeId){'
+        'var _pendCid=window.__agyPendingCascadeId;'
+        'window.__agyPendingCascadeId=null;'
+        'setTimeout(()=>{window.__agyOpenConversation(_pendCid)},150);'
+        '}}catch(_){}'
+    )
+    content = must_replace(content, old_zad_router, new_zad_router, "zad_flush_pending_cascade_on_router_init")
+
+    return content
+
 def patch_conversation_search_all(content):
     if "window.Android.searchAllConversations" in content:
         return content
@@ -802,6 +846,10 @@ def patch_main(file_path):
         if "window.Android.searchAllConversations" not in content:
             print("[web-patch-2.32.1] Applying Conversation Search All occurrences patch...")
             content = patch_conversation_search_all(content)
+            changed = True
+        if "window.__agyOpenConversation=" not in content:
+            print("[web-patch-2.32.1] Applying Conversation Switcher hook patch...")
+            content = patch_convo_switcher(content)
             changed = True
         if "__agyTaskProgressAlertsInjected_v2" not in content:
             print("[web-patch-2.32.1] Applying Task Progress & Alerts Redux Notifications v2 patch...")

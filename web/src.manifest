@@ -25,6 +25,7 @@ src/core/endpoints.js
 src/core/fetch-rewrite.js
 src/core/polyfills-notification.js
 src/core/sidebar-gestures.js
+src/core/sync-engine.js
 src/core/public-api.js
 
 bundle iife patches/web_optimizations.js

@@ -349,7 +349,7 @@ def patch_cancel_stop_hook(content):
 
 
 def patch_agent_notifications(content):
-    if "cascade_prog_" in content:
+    if "__agyActiveRuns" in content and "rm.match(n)?((function(pld)" in content:
         print("[web-patch] Agent notifications already patched in main.js")
         return content, True
 
@@ -380,6 +380,7 @@ def patch_agent_notifications(content):
         'var ct=s.summary||s.title||"Agent completed";'
         'var cb=s.preview||"Agent finished the task";'
         'window.Android.postNotification("agent_completed",ct,cb,cid,false,-1);'
+        '}'
         '}'
         '}'
         '}'
@@ -871,6 +872,418 @@ def patch_backup_restore(content):
     return content, True
 
 
+def patch_sync_conversations(content):
+    if "AgySyncSettingsScreen" in content:
+        print("[web-patch] Sync already patched in main.js")
+        return content, True
+
+    # 1. Update Gtb map to include Sync
+    gtb_target = 'BackupRestore:"Backup and Restore",'
+    gtb_injected = 'BackupRestore:"Backup and Restore",Sync:"Sync",'
+    if gtb_target in content:
+        content = content.replace(gtb_target, gtb_injected, 1)
+        print("[web-patch] Added Sync to Gtb mapping")
+    else:
+        print("[web-patch] Gtb target not found in main.js", file=sys.stderr)
+        return content, False
+
+    # 2. Add Sync to mobile settings list in jNb
+    jnb_target = ',"Backup and Restore"'
+    jnb_injected = ',"Backup and Restore","Sync"'
+    if jnb_target in content:
+        content = content.replace(jnb_target, jnb_injected, 1)
+        print("[web-patch] Added Sync to jNb mobile settings screen list")
+    else:
+        print("[web-patch] jNb target not found in main.js", file=sys.stderr)
+        return content, False
+
+    # 3. Add Sync to desktop settings sidebar
+    sidebar_target = 'A.createElement(Q3,{text:"Backup and Restore",onClick:()=>{D(qX("Backup and Restore"))},isActive:E&&c==="Backup and Restore"})'
+    sidebar_injected = (
+        'A.createElement(Q3,{text:"Backup and Restore",onClick:()=>{D(qX("Backup and Restore"))},isActive:E&&c==="Backup and Restore"}),'
+        'A.createElement(Q3,{text:"Sync",onClick:()=>{D(qX("Sync"))},isActive:E&&c==="Sync"})'
+    )
+    if sidebar_target in content:
+        content = content.replace(sidebar_target, sidebar_injected, 1)
+        print("[web-patch] Added Sync to desktop sidebar")
+    else:
+        print("[web-patch] desktop sidebar target not found in main.js", file=sys.stderr)
+        return content, False
+
+    # 4. Add Sync to fNb switcher (mobile)
+    fnb_target = 'case "Backup and Restore":return A.createElement(BackupRestoreScreen,null);'
+    fnb_injected = (
+        'case "Backup and Restore":return A.createElement(BackupRestoreScreen,null);'
+        'case "Sync":return A.createElement(AgySyncSettingsScreen,null);'
+    )
+    if fnb_target in content:
+        content = content.replace(fnb_target, fnb_injected, 1)
+        print("[web-patch] Added Sync to fNb screen switcher")
+    else:
+        print("[web-patch] fNb target not found in main.js", file=sys.stderr)
+        return content, False
+
+    # 5. Add Sync to desktop screen view container
+    view_target = 'A.createElement("div",{style:{display:b==="Backup and Restore"?"block":"none"}},A.createElement(BackupRestoreScreen,null)),'
+    view_injected = (
+        'A.createElement("div",{style:{display:b==="Backup and Restore"?"block":"none"}},A.createElement(BackupRestoreScreen,null)),'
+        'A.createElement("div",{style:{display:b==="Sync"?"block":"none"}},A.createElement(AgySyncSettingsScreen,null)),'
+    )
+    if view_target in content:
+        content = content.replace(view_target, view_injected, 1)
+        print("[web-patch] Added Sync to desktop view container")
+    else:
+        print("[web-patch] desktop view target not found in main.js", file=sys.stderr)
+        return content, False
+
+    # 6. Add Sync button below Settings in sidebar menu panel (W6b)
+    sidebar_menu_target = 'A.createElement(B5,{icon:A.createElement(W,{name:"settings"}),text:"Settings",onClick:()=>{a("settings_open","settings_button");f()},tooltipText:"Settings",tooltipKeybinding:Ek.keybindings,"data-testid":"settings-button"})'
+    sidebar_menu_injected = (
+        sidebar_menu_target + ','
+        'A.createElement(AgySyncSidebarButton,null)'
+    )
+    if sidebar_menu_target in content:
+        content = content.replace(sidebar_menu_target, sidebar_menu_injected, 1)
+        print("[web-patch] Added Sync button below Settings in sidebar menu panel")
+    else:
+        print("[web-patch] sidebar menu settings button target not found in main.js", file=sys.stderr)
+        return content, False
+
+    # 7. Add Sync button in mobile top bar header (fRb)
+    mobile_menu_target = 'b&&g&&A.createElement(X3,{iconName:"settings",onClick:()=>f({targetScreen:"General"}),"aria-label":"Settings",dataTestId:"mobile-open-settings"})'
+    mobile_menu_injected = (
+        mobile_menu_target + ','
+        'b&&A.createElement(AgyMobileSyncButton,null)'
+    )
+    if mobile_menu_target in content:
+        content = content.replace(mobile_menu_target, mobile_menu_injected, 1)
+        print("[web-patch] Added Sync button in mobile top bar header")
+    else:
+        print("[web-patch] mobile top bar settings target not found in main.js", file=sys.stderr)
+        return content, False
+
+    # 8. Define AgySyncSidebarButton, AgyMobileSyncButton, and AgySyncSettingsScreen components before H_
+    h_target = 'var H_=()=>'
+    sync_comps = (
+        'var AgySyncSidebarButton=()=>{\n'
+        'var [syncPercent,setSyncPercent]=(0,A.useState)(null);\n'
+        'var [isSyncing,setIsSyncing]=(0,A.useState)(!1);\n'
+        '(0,A.useEffect)(()=>{\n'
+        'var onProg=e=>{\n'
+        'var p=typeof e.detail==="number"?e.detail:null;\n'
+        'setSyncPercent(p);\n'
+        'setIsSyncing(p!==null&&p<100);\n'
+        'if(p!==null&&p>=100){\n'
+        'setTimeout(()=>{setSyncPercent(null);setIsSyncing(!1)},2500);\n'
+        '}\n'
+        '};\n'
+        'window.addEventListener("agy:sync-progress",onProg);\n'
+        'return()=>window.removeEventListener("agy:sync-progress",onProg);\n'
+        '},[]);\n'
+        'var onQuickSync=(0,A.useCallback)(()=>{\n'
+        'try{\n'
+        'if(window.__agyTriggerQuickSync)window.__agyTriggerQuickSync();\n'
+        '}catch(_){}\n'
+        '},[]);\n'
+        'return A.createElement(B5,{\n'
+        'icon:A.createElement(W,{name:"sync",className:isSyncing?"animate-spin":void 0}),\n'
+        'text:"Sync",\n'
+        'badge:syncPercent!==null?A.createElement("span",{\n'
+        'className:"ml-auto text-xs font-mono font-medium text-primary px-1.5 py-0.5 rounded bg-primary/10",\n'
+        '"data-testid":"sync-percent"\n'
+        '},syncPercent+"%"):void 0,\n'
+        'tooltipText:isSyncing?("Syncing... "+syncPercent+"%"):"Sync Conversations",\n'
+        'onClick:onQuickSync,\n'
+        '"data-testid":"menu-sync-button"\n'
+        '});\n};\n'
+        'var AgyMobileSyncButton=()=>{\n'
+        'var [syncPercent,setSyncPercent]=(0,A.useState)(null);\n'
+        'var [isSyncing,setIsSyncing]=(0,A.useState)(!1);\n'
+        '(0,A.useEffect)(()=>{\n'
+        'var onProg=e=>{\n'
+        'var p=typeof e.detail==="number"?e.detail:null;\n'
+        'setSyncPercent(p);\n'
+        'setIsSyncing(p!==null&&p<100);\n'
+        'if(p!==null&&p>=100){\n'
+        'setTimeout(()=>{setSyncPercent(null);setIsSyncing(!1)},2500);\n'
+        '}\n'
+        '};\n'
+        'window.addEventListener("agy:sync-progress",onProg);\n'
+        'return()=>window.removeEventListener("agy:sync-progress",onProg);\n'
+        '},[]);\n'
+        'var onQuickSync=(0,A.useCallback)(()=>{\n'
+        'try{\n'
+        'if(window.__agyTriggerQuickSync)window.__agyTriggerQuickSync();\n'
+        '}catch(_){}\n'
+        '},[]);\n'
+        'return A.createElement("div",{className:"relative flex items-center"},\n'
+        'A.createElement(X3,{\n'
+        'iconName:"sync",\n'
+        'onClick:onQuickSync,\n'
+        '"aria-label":isSyncing?("Syncing "+syncPercent+"%"):"Sync Conversations",\n'
+        'className:isSyncing?"animate-spin text-primary":void 0,\n'
+        'dataTestId:"mobile-sync-button"\n'
+        '}),\n'
+        'syncPercent!==null&&A.createElement("span",{\n'
+        'className:"absolute -bottom-1 -right-1 text-[9px] font-mono font-semibold text-primary px-0.5 rounded bg-background shadow-xs",\n'
+        '"data-testid":"mobile-sync-percent"\n'
+        '},syncPercent+"%")\n'
+        ');\n};\n'
+        'var AgySyncSettingsScreen=()=>{\n'
+        'var [cfg,setCfg]=(0,A.useState)(()=>{\n'
+        'if(window.agySyncEngine&&typeof window.agySyncEngine.getConfig==="function"){\n'
+        'return window.agySyncEngine.getConfig();\n'
+        '}\n'
+        'return{token:"",repo:"",branch:"Antigravity",deviceName:"Android Device",deviceId:""};\n'
+        '});\n'
+        'var [showToken,setShowToken]=(0,A.useState)(!1);\n'
+        'var [status,setStatus]=(0,A.useState)(null);\n'
+        'var [isSyncing,setIsSyncing]=(0,A.useState)(!1);\n'
+        'var [syncPercent,setSyncPercent]=(0,A.useState)(null);\n'
+        'var [devicesOpen,setDevicesOpen]=(0,A.useState)(!1);\n'
+        'var [devices,setDevices]=(0,A.useState)([]);\n'
+        'var [loadingDevices,setLoadingDevices]=(0,A.useState)(!1);\n'
+        '(0,A.useEffect)(()=>{\n'
+        'var onProg=e=>{\n'
+        'var p=typeof e.detail==="number"?e.detail:null;\n'
+        'setSyncPercent(p);\n'
+        'setIsSyncing(p!==null&&p<100);\n'
+        '};\n'
+        'window.addEventListener("agy:sync-progress",onProg);\n'
+        'return()=>window.removeEventListener("agy:sync-progress",onProg);\n'
+        '},[]);\n'
+        'var loadDevices=(0,A.useCallback)(async()=>{\n'
+        'setLoadingDevices(!0);\n'
+        'try{\n'
+        'if(window.agySyncEngine&&typeof window.agySyncEngine.getConnectedDevices==="function"){\n'
+        'var devList=await window.agySyncEngine.getConnectedDevices();\n'
+        'setDevices(Array.isArray(devList)?devList:[]);\n'
+        '}\n'
+        '}catch(err){\n'
+        'console.warn("Failed to load connected devices",err);\n'
+        '}finally{\n'
+        'setLoadingDevices(!1);\n'
+        '}\n'
+        '},[]);\n'
+        'var toggleDevices=(0,A.useCallback)(()=>{\n'
+        'var next=!devicesOpen;\n'
+        'setDevicesOpen(next);\n'
+        'if(next)loadDevices();\n'
+        '},[devicesOpen,loadDevices]);\n'
+        'var onSave=(0,A.useCallback)(()=>{\n'
+        'try{\n'
+        'if(window.agySyncEngine&&typeof window.agySyncEngine.saveConfig==="function"){\n'
+        'window.agySyncEngine.saveConfig(cfg.token,cfg.repo,cfg.branch,cfg.deviceName);\n'
+        '}else{\n'
+        'localStorage.setItem("agy_sync_token",(cfg.token||"").trim());\n'
+        'localStorage.setItem("agy_sync_repo",(cfg.repo||"").trim());\n'
+        'localStorage.setItem("agy_sync_branch",(cfg.branch||"Antigravity").trim());\n'
+        'localStorage.setItem("agy_device_name",(cfg.deviceName||"").trim());\n'
+        '}\n'
+        'setStatus({type:"success",title:"Saved",message:"Sync configuration saved successfully."});\n'
+        'setTimeout(()=>setStatus(null),3000);\n'
+        '}catch(err){\n'
+        'setStatus({type:"error",title:"Save Error",message:err.message||String(err)});\n'
+        '}\n'
+        '},[cfg]);\n'
+        'var onSyncNow=(0,A.useCallback)(async()=>{\n'
+        'if(!cfg.token||!cfg.repo){\n'
+        'setStatus({type:"error",title:"Missing Information",message:"Please enter GitHub Token and GitHub Repo."});\n'
+        'return;\n'
+        '}\n'
+        'onSave();\n'
+        'setIsSyncing(!0);\n'
+        'setStatus({type:"info",title:"Syncing",message:"Connecting to GitHub..."});\n'
+        'try{\n'
+        'if(window.agySyncEngine&&typeof window.agySyncEngine.sync==="function"){\n'
+        'await window.agySyncEngine.sync((pct,msg)=>{\n'
+        'setStatus({type:"info",title:"Syncing ("+pct+"%)",message:msg});\n'
+        '});\n'
+        'setStatus({type:"success",title:"Synced",message:"Conversations synchronized successfully across devices!"});\n'
+        'loadDevices();\n'
+        '}else{\n'
+        'setStatus({type:"error",title:"Unavailable",message:"Sync engine not loaded."});\n'
+        '}\n'
+        '}catch(err){\n'
+        'setStatus({type:"error",title:"Sync Failed",message:err.message||String(err)});\n'
+        '}finally{\n'
+        'setIsSyncing(!1);\n'
+        '}\n'
+        '},[cfg,onSave,loadDevices]);\n'
+        'return A.createElement(G_,{title:"Sync"},\n'
+        'A.createElement("div",{className:"space-y-6 max-w-2xl pb-8 p-1 relative"},\n'
+        'status&&A.createElement("div",{\n'
+        'className:aj("p-3 rounded-xl border text-sm flex items-start gap-2.5 transition-all shadow-sm",\n'
+        'status.type==="success"?"bg-emerald-500/10 border-emerald-500/30 text-emerald-300":\n'
+        'status.type==="info"?"bg-sky-500/10 border-sky-500/30 text-sky-300":\n'
+        '"bg-red-500/10 border-red-500/30 text-red-300")\n'
+        '},\n'
+        'A.createElement(W,{\n'
+        'name:status.type==="success"?"check_circle":status.type==="info"?"sync":"error",\n'
+        'size:18,\n'
+        'className:aj("shrink-0 mt-0.5",status.type==="info"&&"animate-spin")\n'
+        '}),\n'
+        'A.createElement("div",{className:"flex-1"},\n'
+        'A.createElement("div",{className:"font-medium"},status.title),\n'
+        'status.message&&A.createElement("div",{className:"text-xs opacity-90 mt-0.5"},status.message)\n'
+        '),\n'
+        'A.createElement("button",{\n'
+        'type:"button",\n'
+        'onClick:()=>setStatus(null),\n'
+        'className:"text-xs opacity-60 hover:opacity-100 p-1 border-none bg-transparent cursor-pointer text-inherit"\n'
+        '},"✕")\n'
+        '),\n'
+        'A.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-4 shadow-xs"},\n'
+        'A.createElement("div",{className:"flex items-center gap-3"},\n'
+        'A.createElement("div",{className:"p-2.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center"},\n'
+        'A.createElement(W,{name:"sync",size:22})\n'
+        '),\n'
+        'A.createElement("div",null,\n'
+        'A.createElement("h3",{className:"font-semibold text-base text-foreground m-0"},"Cross-Device Conversation Sync"),\n'
+        'A.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 mb-0 leading-relaxed"},\n'
+        '"Sync conversations and transcripts across devices via your personal GitHub repository.")\n'
+        ')\n'
+        '),\n'
+        'A.createElement("div",{className:"space-y-3 pt-2"},\n'
+        'A.createElement("div",{className:"space-y-1.5"},\n'
+        'A.createElement("label",{className:"block text-xs font-medium text-muted-foreground"},"GitHub Personal Access Token:"),\n'
+        'A.createElement("div",{className:"relative flex items-center"},\n'
+        'A.createElement("input",{\n'
+        'type:showToken?"text":"password",\n'
+        'value:cfg.token,\n'
+        'onChange:e=>setCfg({...cfg,token:e.target.value}),\n'
+        'placeholder:"ghp_xxxxxxxxxxxxxxxxxxxx",\n'
+        'className:"w-full p-2.5 pr-10 rounded-xl bg-background border border-border text-foreground text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"\n'
+        '}),\n'
+        'A.createElement("button",{\n'
+        'type:"button",\n'
+        'onClick:()=>setShowToken(!showToken),\n'
+        'className:"absolute right-2.5 p-1 text-muted-foreground hover:text-foreground border-none bg-transparent cursor-pointer flex items-center"\n'
+        '},A.createElement(W,{name:showToken?"visibility_off":"visibility",size:16}))\n'
+        ')\n'
+        '),\n'
+        'A.createElement("div",{className:"space-y-1.5"},\n'
+        'A.createElement("label",{className:"block text-xs font-medium text-muted-foreground"},"GitHub Repository (owner/repo):"),\n'
+        'A.createElement("input",{\n'
+        'type:"text",\n'
+        'value:cfg.repo,\n'
+        'onChange:e=>setCfg({...cfg,repo:e.target.value}),\n'
+        'placeholder:"owner/repo",\n'
+        'className:"w-full p-2.5 rounded-xl bg-background border border-border text-foreground text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"\n'
+        '})\n'
+        '),\n'
+        'A.createElement("div",{className:"grid grid-cols-2 gap-3"},\n'
+        'A.createElement("div",{className:"space-y-1.5"},\n'
+        'A.createElement("label",{className:"block text-xs font-medium text-muted-foreground"},"Sync Branch:"),\n'
+        'A.createElement("input",{\n'
+        'type:"text",\n'
+        'value:cfg.branch,\n'
+        'onChange:e=>setCfg({...cfg,branch:e.target.value}),\n'
+        'placeholder:"Antigravity",\n'
+        'className:"w-full p-2.5 rounded-xl bg-background border border-border text-foreground text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"\n'
+        '})\n'
+        '),\n'
+        'A.createElement("div",{className:"space-y-1.5"},\n'
+        'A.createElement("label",{className:"block text-xs font-medium text-muted-foreground"},"Device Name:"),\n'
+        'A.createElement("input",{\n'
+        'type:"text",\n'
+        'value:cfg.deviceName,\n'
+        'onChange:e=>setCfg({...cfg,deviceName:e.target.value}),\n'
+        'placeholder:"Android Device",\n'
+        'className:"w-full p-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"\n'
+        '})\n'
+        ')\n'
+        ')\n'
+        '),\n'
+        'A.createElement("div",{className:"flex items-center gap-3 pt-2"},\n'
+        'A.createElement(tA,{\n'
+        'variant:"primary",\n'
+        'size:"md",\n'
+        'onClick:onSyncNow,\n'
+        'disabled:isSyncing,\n'
+        'className:"flex items-center gap-2"\n'
+        '},\n'
+        'A.createElement(W,{name:"sync",size:16,className:isSyncing?"animate-spin":void 0}),\n'
+        'isSyncing?(syncPercent!==null?("Syncing "+syncPercent+"%"):"Syncing..."):"Sync Now"\n'
+        '),\n'
+        'A.createElement(tA,{\n'
+        'variant:"secondary",\n'
+        'size:"md",\n'
+        'onClick:onSave,\n'
+        'disabled:isSyncing\n'
+        '},"Save Configuration")\n'
+        ')\n'
+        '),\n'
+        'A.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},\n'
+        'A.createElement("button",{\n'
+        'type:"button",\n'
+        'onClick:toggleDevices,\n'
+        'className:"w-full flex items-center justify-between text-left border-none bg-transparent cursor-pointer p-0 text-foreground"\n'
+        '},\n'
+        'A.createElement("div",{className:"flex items-center gap-2.5"},\n'
+        'A.createElement(W,{name:"smartphone",size:18,className:"text-muted-foreground"}),\n'
+        'A.createElement("span",{className:"font-semibold text-sm"},"Connected Devices"),\n'
+        'devices.length>0&&A.createElement("span",{className:"text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-mono font-medium"},devices.length)\n'
+        '),\n'
+        'A.createElement(W,{name:devicesOpen?"expand_less":"unfold_more",size:18,className:"text-muted-foreground"})\n'
+        '),\n'
+        'devicesOpen&&A.createElement("div",{className:"space-y-2 pt-2 border-t border-border animate-fade-in"},\n'
+        'loadingDevices&&A.createElement("div",{className:"flex items-center gap-2 py-3 text-xs text-muted-foreground"},\n'
+        'A.createElement(W,{name:"sync",size:14,className:"animate-spin"}),\n'
+        '"Fetching devices from GitHub repository..."\n'
+        '),\n'
+        '!loadingDevices&&devices.length===0&&A.createElement("div",{className:"text-xs text-muted-foreground py-2"},\n'
+        '"No devices found on branch "+(cfg.branch||"Antigravity")+". Tap \\"Sync Now\\" above to register this device."\n'
+        '),\n'
+        '!loadingDevices&&devices.map((dev,idx)=>{\n'
+        'var isCurrent=dev.id===cfg.deviceId;\n'
+        'var syncDate=dev.lastSync?new Date(dev.lastSync).toLocaleString():"Unknown";\n'
+        'return A.createElement("div",{\n'
+        'key:dev.id||idx,\n'
+        'className:aj("flex items-center justify-between p-2.5 rounded-xl border text-xs",\n'
+        'isCurrent?"border-primary/40 bg-primary/5":"border-border bg-background")\n'
+        '},\n'
+        'A.createElement("div",{className:"flex items-center gap-2.5"},\n'
+        'A.createElement(W,{name:dev.platform==="Android"?"smartphone":"computer",size:16,className:isCurrent?"text-primary":"text-muted-foreground"}),\n'
+        'A.createElement("div",null,\n'
+        'A.createElement("div",{className:"font-medium text-foreground flex items-center gap-1.5"},\n'
+        'dev.name||dev.id,\n'
+        'isCurrent&&A.createElement("span",{className:"text-[10px] px-1.5 py-0.2 rounded bg-primary/20 text-primary font-medium"},"This Device")\n'
+        '),\n'
+        'A.createElement("div",{className:"text-[11px] text-muted-foreground mt-0.5 font-mono"},"ID: "+(dev.id||"unknown"))\n'
+        ')\n'
+        '),\n'
+        'A.createElement("div",{className:"text-right text-[11px] text-muted-foreground"},\n'
+        'A.createElement("div",null,"Last Synced"),\n'
+        'A.createElement("div",{className:"font-medium text-foreground mt-0.5"},syncDate)\n'
+        ')\n'
+        ');\n'
+        '}),\n'
+        '!loadingDevices&&A.createElement("div",{className:"flex justify-end pt-1"},\n'
+        'A.createElement(tA,{\n'
+        'variant:"ghost",\n'
+        'size:"sm",\n'
+        'onClick:loadDevices,\n'
+        'className:"flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"\n'
+        '},\n'
+        'A.createElement(W,{name:"refresh",size:14}),"Refresh Devices"\n'
+        ')\n'
+        ')\n'
+        ')\n'
+        ')\n'
+        '));\n};\n'
+    )
+
+    if h_target in content:
+        content = content.replace(h_target, sync_comps + h_target, 1)
+        print("[web-patch] Successfully injected AgySyncSettingsScreen and Sync buttons before H_")
+    else:
+        print("[web-patch] H_ target not found in main.js", file=sys.stderr)
+        return content, False
+
+    return content, True
+
+
 def patch_terminal_touch_scroll(content):
     # 1. Update CK(a) drawer swipe ignore check to include terminal selectors
     ck_target = 'function CK(a){return!!a?.closest("[data-base-ui-swipe-ignore]")}'
@@ -907,6 +1320,51 @@ def patch_terminal_touch_scroll(content):
         print("[web-patch] Successfully patched terminal-surface with swipe-ignore attributes")
     else:
         print("[web-patch] terminal-surface target not found in main.js", file=sys.stderr)
+        return content, False
+
+    return content, True
+
+
+def patch_internet_connectivity_check(content):
+    s4a_target = 'var S4a=()=>{var [a,b]=(0,A.useState)(!0);(0,A.useEffect)(()=>{var c=()=>{b(()=>navigator.onLine)};c();window.addEventListener("online",c);window.addEventListener("offline",c);return()=>{window.removeEventListener("online",c);window.removeEventListener("offline",c)}},[void 0,void 0]);return{isOnline:a}};'
+    s4a_injected = (
+        'var S4a=()=>{var [a,b]=(0,A.useState)(!0);(0,A.useEffect)(()=>{'
+        'var c=()=>{var on=typeof navigator!=="undefined"?navigator.onLine:!0;'
+        'try{if(typeof window!=="undefined"&&window.Android&&typeof window.Android.isNetworkConnected==="function"){'
+        'on=window.Android.isNetworkConnected()'
+        '}}catch(_){}'
+        'b(on);'
+        '};'
+        'c();'
+        'window.addEventListener("online",c);'
+        'window.addEventListener("offline",c);'
+        'window.addEventListener("agy:network-online",c);'
+        'var tid=setInterval(c,4000);'
+        'return()=>{window.removeEventListener("online",c);window.removeEventListener("offline",c);window.removeEventListener("agy:network-online",c);clearInterval(tid)}'
+        '},[]);return{isOnline:a}};'
+    )
+    if s4a_target in content:
+        content = content.replace(s4a_target, s4a_injected, 1)
+        print("[web-patch] Patched S4a to check native Android network connectivity")
+    else:
+        print("[web-patch] s4a_target not found in main.js", file=sys.stderr)
+        return content, False
+
+    y7b_target = 'var y7b=({isOnline:a})=>a?null:A.createElement("div",{className:"w-full bg-muted px-3 flex-1 flex items-center gap-2 text-sm"},A.createElement(W,{name:"warning",className:"h-4 w-4 shrink-0 text-yellow-500"}),A.createElement("span",{className:"text-foreground"},"No internet. Agent features may not work."));'
+    y7b_injected = (
+        'var y7b=({isOnline:a})=>{'
+        'var on=a;'
+        'try{if(typeof window!=="undefined"&&window.Android&&typeof window.Android.isNetworkConnected==="function"){'
+        'on=window.Android.isNetworkConnected()'
+        '}}catch(_){}'
+        'return on?null:A.createElement("div",{className:"w-full bg-muted px-3 flex-1 flex items-center gap-2 text-sm"},A.createElement(W,{name:"warning",className:"h-4 w-4 shrink-0 text-yellow-500"}),A.createElement("span",{className:"text-foreground"},"No internet. Agent features may not work."))'
+        '};'
+    )
+    if y7b_target in content:
+        content = content.replace(y7b_target, y7b_injected, 1)
+        print("[web-patch] Patched y7b internet banner to hide when native network is connected")
+    else:
+        print("[web-patch] y7b_target not found in main.js", file=sys.stderr)
         return content, False
 
     return content, True
@@ -980,8 +1438,16 @@ def patch_main(file_path):
     if not ok_br:
         return False
 
+    content, ok_sync = patch_sync_conversations(content)
+    if not ok_sync:
+        return False
+
     content, ok_term = patch_terminal_touch_scroll(content)
     if not ok_term:
+        return False
+
+    content, ok_net_check = patch_internet_connectivity_check(content)
+    if not ok_net_check:
         return False
 
     with open(file_path, "w", encoding="utf-8") as f:

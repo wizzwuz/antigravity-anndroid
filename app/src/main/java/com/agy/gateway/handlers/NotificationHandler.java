@@ -13,18 +13,20 @@ import org.json.JSONObject;
 
 /**
  * Handles native Android notifications and notification categories:
- * 1. Agent completed in the open chat (notification shade without a heads-up banner)
- * 2. Agent completed (floating notification / heads-up banner, finished or needs attention)
- * 3. Agent progress (silent progress for Antigravity tasks)
+ * 1. Agent completed in the open chat (silent shade notification)
+ * 2. Agent completed (silent heads-up banner, finished or needs attention)
+ * 3. Agent progress (silent ongoing progress bar for Antigravity tasks)
+ *
+ * All channels and builders are strictly SILENT: no ringtones, no notification sounds, no vibration.
  */
 public final class NotificationHandler {
 
     private static final String TAG = "NotificationHandler";
 
-    // User requested notification categories
-    public static final String CHANNEL_AGENT_COMPLETED_OPEN_CHAT = "agent_completed_open_chat";
-    public static final String CHANNEL_AGENT_COMPLETED = "agent_completed";
-    public static final String CHANNEL_AGENT_PROGRESS = "agent_progress";
+    // New versioned silent channel IDs to prevent Android OS from using cached sound/vibration
+    public static final String CHANNEL_AGENT_COMPLETED_OPEN_CHAT = "agent_completed_open_chat_v3";
+    public static final String CHANNEL_AGENT_COMPLETED = "agent_completed_v3";
+    public static final String CHANNEL_AGENT_PROGRESS = "agent_progress_v3";
 
     // Legacy channel compatibility
     public static final String CHANNEL_TASKS = "agy_tasks";
@@ -46,54 +48,56 @@ public final class NotificationHandler {
                 return;
             }
 
-            // 1. Agent completed in the open chat: notification shade without a heads-up banner
+            // Clean up legacy channels that may have system-cached sound or vibration
+            String[] legacy = new String[]{
+                "agent_completed", "agent_completed_open_chat", "agent_progress",
+                "agy_tasks", "agy_alerts", "agent_completed_v2", "agent_completed_open_chat_v2", "agent_progress_v2"
+            };
+            for (String ch : legacy) {
+                try {
+                    manager.deleteNotificationChannel(ch);
+                } catch (Throwable ignored) {}
+            }
+
+            // 1. Silent completion in open chat: shade notification without sound or vibration
             NotificationChannel openChat = new NotificationChannel(
                     CHANNEL_AGENT_COMPLETED_OPEN_CHAT,
-                    "Agent completed in the open chat",
-                    NotificationManager.IMPORTANCE_DEFAULT);
-            openChat.setDescription("Completion in the open chat: notification shade without a heads-up banner");
+                    "Agent completed in open chat",
+                    NotificationManager.IMPORTANCE_LOW);
+            openChat.setDescription("Completion in open chat (silent, no sound, no vibration)");
             openChat.setShowBadge(true);
             openChat.setSound(null, null);
+            openChat.enableVibration(false);
+            openChat.setVibrationPattern(null);
             openChat.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             manager.createNotificationChannel(openChat);
 
-            // 2. Agent completed: Agent finished or needs attention (floating heads-up banner support, silent)
+            // 2. Silent completed banner: heads-up banner support with zero sound and zero vibration
             NotificationChannel completed = new NotificationChannel(
                     CHANNEL_AGENT_COMPLETED,
                     "Agent completed",
                     NotificationManager.IMPORTANCE_HIGH);
-            completed.setDescription("Agent finished or needs attention");
-            completed.enableLights(true);
-            completed.enableVibration(true);
-            completed.setVibrationPattern(new long[]{0, 200});
+            completed.setDescription("Agent task completed alert (silent, no sound, no vibration)");
+            completed.enableLights(false);
+            completed.enableVibration(false);
+            completed.setVibrationPattern(null);
             completed.setSound(null, null);
             completed.setShowBadge(true);
             completed.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             manager.createNotificationChannel(completed);
 
-            // 3. Agent progress: Silent progress for Antigravity tasks
+            // 3. Silent task progress: ongoing progress bar with zero sound and zero vibration
             NotificationChannel progress = new NotificationChannel(
                     CHANNEL_AGENT_PROGRESS,
                     "Agent progress",
                     NotificationManager.IMPORTANCE_LOW);
-            progress.setDescription("Silent progress for Antigravity tasks");
+            progress.setDescription("Ongoing task progress (silent, no sound, no vibration)");
             progress.setShowBadge(false);
+            progress.enableVibration(false);
+            progress.setVibrationPattern(null);
             progress.setSound(null, null);
             progress.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             manager.createNotificationChannel(progress);
-
-            // Legacy fallback channels for compatibility
-            NotificationChannel tasks = new NotificationChannel(
-                    CHANNEL_TASKS, "Antigravity Tasks", NotificationManager.IMPORTANCE_LOW);
-            tasks.setDescription("Notifications for ongoing AI agent and environment tasks");
-            tasks.setSound(null, null);
-            manager.createNotificationChannel(tasks);
-
-            NotificationChannel alerts = new NotificationChannel(
-                    CHANNEL_ALERTS, "Antigravity Alerts", NotificationManager.IMPORTANCE_HIGH);
-            alerts.setDescription("High-priority alerts and task completions");
-            alerts.setSound(null, null);
-            manager.createNotificationChannel(alerts);
         }
     }
 
@@ -105,13 +109,18 @@ public final class NotificationHandler {
 
         initChannels(context);
 
-        // Normalize channel alias
-        if (channel == null || channel.isEmpty()) {
-            channel = ongoing ? CHANNEL_AGENT_PROGRESS : CHANNEL_AGENT_COMPLETED;
-        } else if (CHANNEL_TASKS.equalsIgnoreCase(channel)) {
-            channel = CHANNEL_AGENT_PROGRESS;
-        } else if (CHANNEL_ALERTS.equalsIgnoreCase(channel)) {
+        // Normalize channel alias to new v3 silent channels
+        if ("agent_completed".equalsIgnoreCase(channel) || "agent_completed_v3".equalsIgnoreCase(channel)
+                || CHANNEL_ALERTS.equalsIgnoreCase(channel)) {
             channel = CHANNEL_AGENT_COMPLETED;
+        } else if ("agent_progress".equalsIgnoreCase(channel) || "agent_progress_v3".equalsIgnoreCase(channel)
+                || CHANNEL_TASKS.equalsIgnoreCase(channel)) {
+            channel = CHANNEL_AGENT_PROGRESS;
+        } else if ("agent_completed_open_chat".equalsIgnoreCase(channel)
+                || "agent_completed_open_chat_v3".equalsIgnoreCase(channel)) {
+            channel = CHANNEL_AGENT_COMPLETED_OPEN_CHAT;
+        } else if (channel == null || channel.isEmpty()) {
+            channel = ongoing ? CHANNEL_AGENT_PROGRESS : CHANNEL_AGENT_COMPLETED;
         }
 
         // Determine stable per-conversation tag & ID for multi-conversation support
@@ -148,15 +157,35 @@ public final class NotificationHandler {
                 .setContentText(message)
                 .setSmallIcon(icon)
                 .setOngoing(ongoing)
-                .setAutoCancel(!ongoing);
+                .setAutoCancel(!ongoing)
+                .setSound(null)
+                .setDefaults(0)
+                .setVibrate(null)
+                .setOnlyAlertOnce(true);
 
         // Progress bar configuration: always smooth continuous indeterminate for agent_progress
         if (CHANNEL_AGENT_PROGRESS.equals(channel)) {
             builder.setProgress(0, 0, true);
+            builder.setPriority(Notification.PRIORITY_LOW);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                builder.setCategory(Notification.CATEGORY_PROGRESS);
+            }
         } else if (progress >= 0) {
             builder.setProgress(100, Math.min(100, Math.max(0, progress)), false);
         } else if (ongoing) {
             builder.setProgress(0, 0, true);
+        }
+
+        if (CHANNEL_AGENT_COMPLETED.equals(channel)) {
+            builder.setPriority(Notification.PRIORITY_HIGH);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                builder.setCategory(Notification.CATEGORY_EVENT);
+            }
+        } else if (CHANNEL_AGENT_COMPLETED_OPEN_CHAT.equals(channel)) {
+            builder.setPriority(Notification.PRIORITY_LOW);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                builder.setCategory(Notification.CATEGORY_STATUS);
+            }
         }
 
         // Action Intent to bring app to foreground and navigate directly to conversation
@@ -173,32 +202,12 @@ public final class NotificationHandler {
         }
         PendingIntent pi = PendingIntent.getActivity(context, actualId, intent, pendingFlags);
         builder.setContentIntent(pi);
-        builder.setSound(null);
 
-        // Configure floating notification support / priority (silent: zero notification sound)
-        if (CHANNEL_AGENT_COMPLETED.equals(channel)) {
-            builder.setPriority(Notification.PRIORITY_MAX);
-            builder.setDefaults(0);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                builder.setCategory(Notification.CATEGORY_EVENT);
-                builder.setVibrate(new long[]{0, 200});
-            }
-        } else if (CHANNEL_AGENT_PROGRESS.equals(channel)) {
-            builder.setPriority(Notification.PRIORITY_LOW);
-            builder.setDefaults(0);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                builder.setCategory(Notification.CATEGORY_PROGRESS);
-            }
-        } else {
-            // CHANNEL_AGENT_COMPLETED_OPEN_CHAT: notification shade without a heads-up banner
-            builder.setPriority(Notification.PRIORITY_DEFAULT);
-            builder.setDefaults(0);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                builder.setCategory(Notification.CATEGORY_STATUS);
-            }
+        try {
+            manager.notify(actualTag, actualId, builder.build());
+        } catch (Throwable t) {
+            Log.w(TAG, "manager.notify failed: " + t.getMessage());
         }
-
-        manager.notify(actualTag, actualId, builder.build());
     }
 
     public static void cancel(Context context, String tag, int id) {

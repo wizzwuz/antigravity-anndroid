@@ -9,13 +9,24 @@ export DIST_DIR="$PROJECT_ROOT/dist"
 export APP_DIR="$PROJECT_ROOT/app"
 export TOOLS_DIR="$PROJECT_ROOT/tools"
 
-if [ -d "/data/user/0/com.agy.dev/files" ] && [ -w "/data/user/0/com.agy.dev/files" ]; then
+if [ -d "/data/user/0/com.agy.wizzwuz/files" ] && [ -w "/data/user/0/com.agy.wizzwuz/files" ]; then
+    export HOME="/data/user/0/com.agy.wizzwuz/files"
+    export PATH="/data/user/0/com.agy.wizzwuz/files/usr/bin:$PATH"
+elif [ -d "/data/user/0/com.agy.dev/files" ] && [ -w "/data/user/0/com.agy.dev/files" ]; then
     export HOME="/data/user/0/com.agy.dev/files"
     export PATH="/data/user/0/com.agy.dev/files/usr/bin:$PATH"
 elif [ -d "/data/user/0/com.agy/files" ] && [ -w "/data/user/0/com.agy/files" ]; then
     export HOME="/data/user/0/com.agy/files"
     export PATH="/data/user/0/com.agy/files/usr/bin:$PATH"
 fi
+
+for jvm in "${HOME:-}/usr/lib/jvm/java-21-openjdk" "${HOME:-}/usr/lib/jvm/java-17-openjdk"; do
+    if [ -d "$jvm" ]; then
+        export JAVA_HOME="$jvm"
+        export LD_LIBRARY_PATH="$jvm/lib:${LD_LIBRARY_PATH:-}"
+        break
+    fi
+done
 export LANG=C.UTF-8
 export LC_ALL=C.UTF-8
 

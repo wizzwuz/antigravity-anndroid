@@ -178,8 +178,18 @@ public class MainActivity extends Activity
 
         splashDeadline = System.currentTimeMillis() + SPLASH_TIMEOUT_MS;
         requestStoragePermissions();
+        requestNotificationPermission();
 
         startCoreService();
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1003);
+            }
+        }
     }
 
     private void startCoreService() {

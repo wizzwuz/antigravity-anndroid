@@ -379,6 +379,210 @@ public final class BackupRestoreHelper {
         return res;
     }
 
+    public static JSONObject backupConversationsToStream(Context context, String conversationScope, OutputStream os) {
+        JSONObject res = new JSONObject();
+        ZipOutputStream zos = null;
+        int count = 0;
+        File tempSummaryDb = null;
+
+        try {
+            File geminiDir = getGeminiDir(context);
+            if (!geminiDir.exists()) {
+                res.put("success", false);
+                res.put("error", "Antigravity application directory not found");
+                return res;
+            }
+
+            zos = new ZipOutputStream(new BufferedOutputStream(os, BUFFER_SIZE));
+            zos.setLevel(Deflater.BEST_COMPRESSION);
+
+            boolean isSpecific = conversationScope != null && !conversationScope.trim().isEmpty() && !"all".equalsIgnoreCase(conversationScope.trim());
+            String targetId = isSpecific ? conversationScope.trim() : null;
+
+            if (isSpecific) {
+                File convDir = new File(geminiDir, "conversations");
+                if (convDir.exists() && convDir.isDirectory()) {
+                    String[] extensions = new String[]{"", "-wal", "-shm"};
+                    for (String ext : extensions) {
+                        File dbFile = new File(convDir, targetId + ".db" + ext);
+                        if (dbFile.exists() && dbFile.isFile()) {
+                            addFileToZip(zos, dbFile, "conversations/" + dbFile.getName());
+                            count++;
+                        }
+                    }
+                }
+
+                File brainSubDir = new File(geminiDir, "brain/" + targetId);
+                if (brainSubDir.exists() && brainSubDir.isDirectory()) {
+                    int added = addDirToZip(zos, brainSubDir, "brain/" + targetId, geminiDir);
+                    count += added;
+                }
+
+                File existingDb = new File(geminiDir, "conversation_summaries.db");
+                if (existingDb.exists() && existingDb.length() > 0) {
+                    tempSummaryDb = new File(geminiDir, "temp_export_summary_" + System.currentTimeMillis() + ".db");
+                    SQLiteDatabase srcDb = null;
+                    SQLiteDatabase dstDb = null;
+                    Cursor cur = null;
+                    try {
+                        srcDb = SQLiteDatabase.openDatabase(existingDb.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+                        dstDb = SQLiteDatabase.openOrCreateDatabase(tempSummaryDb, null);
+                        cur = srcDb.rawQuery("SELECT sql FROM sqlite_master WHERE type='table' AND name='conversation_summaries'", null);
+                        if (cur != null && cur.moveToFirst()) {
+                            String createSql = cur.getString(0);
+                            dstDb.execSQL(createSql);
+                            srcDb.execSQL("ATTACH DATABASE ? AS export_db", new String[]{tempSummaryDb.getAbsolutePath()});
+                            srcDb.execSQL("INSERT INTO export_db.conversation_summaries SELECT * FROM conversation_summaries WHERE conversation_id = ?", new String[]{targetId});
+                            srcDb.execSQL("DETACH DATABASE export_db");
+                        }
+                    } finally {
+                        if (cur != null) cur.close();
+                        if (dstDb != null) dstDb.close();
+                        if (srcDb != null) srcDb.close();
+                    }
+                    if (tempSummaryDb.exists() && tempSummaryDb.length() > 0) {
+                        addFileToZip(zos, tempSummaryDb, "conversation_summaries.db");
+                        count++;
+                    }
+                }
+            } else {
+                File summaryDb = new File(geminiDir, "conversation_summaries.db");
+                if (summaryDb.exists() && summaryDb.isFile()) {
+                    addFileToZip(zos, summaryDb, "conversation_summaries.db");
+                    count++;
+                }
+
+                File convDir = new File(geminiDir, "conversations");
+                if (convDir.exists() && convDir.isDirectory()) {
+                    int added = addDirToZip(zos, convDir, "conversations", geminiDir);
+                    count += added;
+                }
+
+                File brainDir = new File(geminiDir, "brain");
+                if (brainDir.exists() && brainDir.isDirectory()) {
+                    int added = addDirToZip(zos, brainDir, "brain", geminiDir);
+                    count += added;
+                }
+            }
+
+            zos.finish();
+            zos.flush();
+
+            res.put("success", true);
+            res.put("count", count);
+            res.put("message", "Backed up " + count + " conversation files successfully.");
+        } catch (Throwable t) {
+            Log.e(TAG, "backupConversationsToStream failed", t);
+            try {
+                res.put("success", false);
+                res.put("error", t.getMessage() != null ? t.getMessage() : t.toString());
+            } catch (Throwable ignored) {}
+        } finally {
+            IoUtil.closeQuietly(zos);
+            if (tempSummaryDb != null && tempSummaryDb.exists()) {
+                tempSummaryDb.delete();
+            }
+        }
+        return res;
+    }
+
+    public static JSONObject restoreConversationsFromStream(Context context, InputStream is) {
+        JSONObject res = new JSONObject();
+        ZipInputStream zis = null;
+        int restoredCount = 0;
+        File tempDb = null;
+
+        try {
+            File geminiDir = getGeminiDir(context);
+            geminiDir.mkdirs();
+            String canonicalRoot = geminiDir.getCanonicalPath();
+
+            zis = new ZipInputStream(new BufferedInputStream(is, BUFFER_SIZE));
+            ZipEntry entry;
+            byte[] buf = new byte[BUFFER_SIZE];
+
+            File existingDb = new File(geminiDir, "conversation_summaries.db");
+            tempDb = new File(geminiDir, "temp_restored_summaries_" + System.currentTimeMillis() + ".db");
+
+            while ((entry = zis.getNextEntry()) != null) {
+                String entryName = entry.getName().replace('\\', '/');
+                if (entryName.startsWith("/") || entryName.contains("..")) {
+                    zis.closeEntry();
+                    continue;
+                }
+
+                if (entry.isDirectory()) {
+                    File d = new File(geminiDir, entryName);
+                    if (d.getCanonicalPath().startsWith(canonicalRoot)) {
+                        d.mkdirs();
+                    }
+                    zis.closeEntry();
+                    continue;
+                }
+
+                File outFile;
+                if ("conversation_summaries.db".equals(entryName)) {
+                    outFile = tempDb;
+                } else {
+                    outFile = new File(geminiDir, entryName);
+                }
+
+                if (!outFile.getCanonicalPath().startsWith(canonicalRoot)) {
+                    zis.closeEntry();
+                    continue;
+                }
+
+                File parent = outFile.getParentFile();
+                if (parent != null && !parent.exists()) {
+                    parent.mkdirs();
+                }
+
+                FileOutputStream fos = null;
+                try {
+                    fos = new FileOutputStream(outFile);
+                    int read;
+                    while ((read = zis.read(buf)) > 0) {
+                        fos.write(buf, 0, read);
+                    }
+                    fos.flush();
+                    restoredCount++;
+                } finally {
+                    IoUtil.closeQuietly(fos);
+                }
+                zis.closeEntry();
+            }
+
+            if (tempDb.exists() && tempDb.length() > 0) {
+                if (existingDb.exists() && existingDb.length() > 0) {
+                    mergeSummariesDatabase(existingDb, tempDb);
+                } else {
+                    if (existingDb.exists()) {
+                        existingDb.delete();
+                    }
+                    if (!tempDb.renameTo(existingDb)) {
+                        copyFile(tempDb, existingDb);
+                    }
+                }
+            }
+
+            res.put("success", true);
+            res.put("count", restoredCount);
+            res.put("message", "Successfully restored " + restoredCount + " conversation files.");
+        } catch (Throwable t) {
+            Log.e(TAG, "restoreConversationsFromStream failed", t);
+            try {
+                res.put("success", false);
+                res.put("error", t.getMessage() != null ? t.getMessage() : t.toString());
+            } catch (Throwable ignored) {}
+        } finally {
+            IoUtil.closeQuietly(zis);
+            if (tempDb != null && tempDb.exists()) {
+                tempDb.delete();
+            }
+        }
+        return res;
+    }
+
     public static JSONObject backupProjects(Context context, String projectName, Uri destinationUri) {
         JSONObject res = new JSONObject();
         ZipOutputStream zos = null;

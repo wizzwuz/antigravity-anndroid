@@ -7,6 +7,7 @@ import com.agy.runtime.RuntimeManager;
 import com.agy.shell.ShizukuBridge;
 import com.agy.theme.ThemeManager;
 import com.agy.ui.MainActivity;
+import com.agy.util.BackupRestoreHelper;
 
 import android.util.Log;
 import java.io.File;
@@ -32,6 +33,7 @@ public final class AndroidBridge {
 
     private static final String TAG = "AndroidBridge";
 
+    private final Context appContext;
     private final UiBridge ui = new UiBridge();
     private final ThemeBridge themeBridge;
     private final EngineBridge engine;
@@ -42,6 +44,7 @@ public final class AndroidBridge {
     public AndroidBridge(Context context, RuntimeManager runtime,
                          ShizukuBridge shizuku, ThemeManager theme) {
         Context appContext = context.getApplicationContext();
+        this.appContext = appContext;
         this.themeBridge = new ThemeBridge(theme);
         this.engine = new EngineBridge(runtime);
         this.config = new EngineConfigJson(appContext, runtime, engine, shizuku, themeBridge);
@@ -159,6 +162,79 @@ public final class AndroidBridge {
     }
 
     @JavascriptInterface
+    public String createSyncArchiveBase64() {
+        Context ctx = activityRef != null && activityRef.get() != null
+                ? activityRef.get().getApplicationContext() : appContext;
+        if (ctx == null && MainActivity.activeActivity != null) {
+            ctx = MainActivity.activeActivity.getApplicationContext();
+        }
+        if (ctx == null) return "";
+        try {
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            JSONObject res = BackupRestoreHelper.backupConversationsToStream(ctx, null, baos);
+            if (res.optBoolean("success", false)) {
+                byte[] bytes = baos.toByteArray();
+                return android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "createSyncArchiveBase64 failed: " + t.getMessage());
+        }
+        return "";
+    }
+
+    @JavascriptInterface
+    public boolean applySyncArchiveBase64(String base64Data) {
+        if (base64Data == null || base64Data.trim().isEmpty()) return false;
+        Context ctx = activityRef != null && activityRef.get() != null
+                ? activityRef.get().getApplicationContext() : appContext;
+        if (ctx == null && MainActivity.activeActivity != null) {
+            ctx = MainActivity.activeActivity.getApplicationContext();
+        }
+        if (ctx == null) return false;
+        try {
+            byte[] bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT);
+            java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(bytes);
+            JSONObject res = BackupRestoreHelper.restoreConversationsFromStream(ctx, bais);
+            return res.optBoolean("success", false);
+        } catch (Throwable t) {
+            Log.w(TAG, "applySyncArchiveBase64 failed: " + t.getMessage());
+        }
+        return false;
+    }
+
+    @JavascriptInterface
+    public String getDeviceName() {
+        try {
+            String manufacturer = android.os.Build.MANUFACTURER;
+            String model = android.os.Build.MODEL;
+            if (model.toLowerCase().startsWith(manufacturer.toLowerCase())) {
+                return model;
+            }
+            return manufacturer + " " + model;
+        } catch (Throwable t) {
+            return "Android Device";
+        }
+    }
+
+    @JavascriptInterface
+    public String getDeviceId() {
+        Context ctx = activityRef != null && activityRef.get() != null
+                ? activityRef.get().getApplicationContext() : appContext;
+        if (ctx == null && MainActivity.activeActivity != null) {
+            ctx = MainActivity.activeActivity.getApplicationContext();
+        }
+        if (ctx != null) {
+            try {
+                String id = android.provider.Settings.Secure.getString(ctx.getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
+                if (id != null && !id.trim().isEmpty()) {
+                    return "dev_" + id;
+                }
+            } catch (Throwable ignored) {}
+        }
+        return "dev_" + Math.abs(android.os.Build.MODEL.hashCode());
+    }
+
+    @JavascriptInterface
     public void onUiError(String token, final String errorMessage) {
         if (matchesNativeBridgeToken(token)) {
             ui.onUiError(errorMessage);
@@ -196,9 +272,38 @@ public final class AndroidBridge {
     }
 
     @JavascriptInterface
+    public boolean isNetworkConnected() {
+        Context ctx = activityRef != null && activityRef.get() != null
+                ? activityRef.get().getApplicationContext() : appContext;
+        if (ctx == null && MainActivity.activeActivity != null) {
+            ctx = MainActivity.activeActivity.getApplicationContext();
+        }
+        if (ctx == null) return true;
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm != null) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    android.net.Network net = cm.getActiveNetwork();
+                    if (net != null) {
+                        android.net.NetworkCapabilities caps = cm.getNetworkCapabilities(net);
+                        if (caps != null) {
+                            return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET);
+                        }
+                    }
+                    return false;
+                } else {
+                    android.net.NetworkInfo info = cm.getActiveNetworkInfo();
+                    return info != null && info.isConnected();
+                }
+            }
+        } catch (Throwable ignored) {}
+        return true;
+    }
+
+    @JavascriptInterface
     public void postNotification(String channel, String title, String message, String cascadeId, boolean ongoing, int progress) {
         final MainActivity act = activityRef != null ? activityRef.get() : MainActivity.activeActivity;
-        Context ctx = act != null ? act.getApplicationContext() : null;
+        Context ctx = act != null ? act.getApplicationContext() : appContext;
         if (ctx != null) {
             com.agy.gateway.handlers.NotificationHandler.post(ctx, channel, title, message, cascadeId, ongoing, progress, 0, null);
         }
@@ -207,7 +312,7 @@ public final class AndroidBridge {
     @JavascriptInterface
     public void cancelNotification(String tag, int id) {
         final MainActivity act = activityRef != null ? activityRef.get() : MainActivity.activeActivity;
-        Context ctx = act != null ? act.getApplicationContext() : null;
+        Context ctx = act != null ? act.getApplicationContext() : appContext;
         if (ctx != null) {
             com.agy.gateway.handlers.NotificationHandler.cancel(ctx, tag, id);
         }

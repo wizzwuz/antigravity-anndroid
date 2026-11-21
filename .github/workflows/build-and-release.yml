@@ -6,6 +6,8 @@ on:
       - 'v*'
     branches:
       - dev
+      - test_sync
+      - 'test_*'
   workflow_dispatch:
     inputs:
       tag_name:

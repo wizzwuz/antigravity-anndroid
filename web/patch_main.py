@@ -1284,6 +1284,103 @@ def patch_sync_conversations(content):
     return content, True
 
 
+def patch_test_backup_restore(content):
+    if "ParentTestBackupScreen" in content:
+        print("[web-patch] test backup/restore already patched in main.js")
+        return content, True
+
+    # 1. Update Gtb map to include test backup/restore
+    gtb_target = 'Sync:"Sync",'
+    gtb_injected = 'Sync:"Sync",TestBackupRestore:"test backup/restore",'
+    if gtb_target in content:
+        content = content.replace(gtb_target, gtb_injected, 1)
+        print("[web-patch] Added test backup/restore to Gtb mapping")
+    else:
+        print("[web-patch] Gtb target (Sync) not found in main.js", file=sys.stderr)
+        return content, False
+
+    # 2. Add test backup/restore to mobile settings list in jNb
+    jnb_target = ',"Sync"'
+    jnb_injected = ',"Sync","test backup/restore"'
+    if jnb_target in content:
+        content = content.replace(jnb_target, jnb_injected, 1)
+        print("[web-patch] Added test backup/restore to jNb mobile settings screen list")
+    else:
+        print("[web-patch] jNb target not found in main.js", file=sys.stderr)
+        return content, False
+
+    # 3. Add test backup/restore to desktop settings sidebar
+    sidebar_target = 'A.createElement(Q3,{text:"Sync",onClick:()=>{D(qX("Sync"))},isActive:E&&c==="Sync"})'
+    sidebar_injected = (
+        'A.createElement(Q3,{text:"Sync",onClick:()=>{D(qX("Sync"))},isActive:E&&c==="Sync"}),'
+        'A.createElement(Q3,{text:"test backup/restore",onClick:()=>{D(qX("test backup/restore"))},isActive:E&&c==="test backup/restore"})'
+    )
+    if sidebar_target in content:
+        content = content.replace(sidebar_target, sidebar_injected, 1)
+        print("[web-patch] Added test backup/restore to desktop sidebar")
+    else:
+        print("[web-patch] desktop sidebar target not found in main.js", file=sys.stderr)
+        return content, False
+
+    # 4. Add test backup/restore to fNb switcher (mobile)
+    fnb_target = 'case "Sync":return A.createElement(AgySyncSettingsScreen,null);'
+    fnb_injected = (
+        'case "Sync":return A.createElement(AgySyncSettingsScreen,null);'
+        'case "test backup/restore":return A.createElement(ParentTestBackupScreen,null);'
+    )
+    if fnb_target in content:
+        content = content.replace(fnb_target, fnb_injected, 1)
+        print("[web-patch] Added test backup/restore to fNb screen switcher")
+    else:
+        print("[web-patch] fNb target not found in main.js", file=sys.stderr)
+        return content, False
+
+    # 5. Add test backup/restore to desktop screen view container
+    view_target = 'A.createElement("div",{style:{display:b==="Sync"?"block":"none"}},A.createElement(AgySyncSettingsScreen,null)),'
+    view_injected = (
+        'A.createElement("div",{style:{display:b==="Sync"?"block":"none"}},A.createElement(AgySyncSettingsScreen,null)),'
+        'A.createElement("div",{style:{display:b==="test backup/restore"?"block":"none"}},A.createElement(ParentTestBackupScreen,null)),'
+    )
+    if view_target in content:
+        content = content.replace(view_target, view_injected, 1)
+        print("[web-patch] Added test backup/restore to desktop view container")
+    else:
+        print("[web-patch] desktop view target not found in main.js", file=sys.stderr)
+        return content, False
+
+    # 6. Inject ParentTestBackupScreen component before H_
+    h_target = 'var H_=()=>'
+    parent_backup_comp = (
+        'var ParentTestBackupScreen=()=>{\n'
+        '(0,A.useEffect)(()=>{\n'
+        'try{\n'
+        'if(typeof readNativeBackupState==="function")readNativeBackupState();\n'
+        'if(typeof renderSettingsBackupSection==="function")renderSettingsBackupSection();\n'
+        '}catch(_){}\n'
+        'var interval=setInterval(()=>{\n'
+        'try{\n'
+        'if(typeof readNativeBackupState==="function")readNativeBackupState();\n'
+        'if(typeof renderSettingsBackupSection==="function")renderSettingsBackupSection();\n'
+        '}catch(_){}\n'
+        '},1000);\n'
+        'return()=>clearInterval(interval);\n'
+        '},[]);\n'
+        'return A.createElement("div",{\n'
+        'className:"p-4 space-y-4 max-w-2xl overflow-y-auto max-h-[85vh]",\n'
+        'id:"agy-application-settings-anchor"\n'
+        '});\n'
+        '};\n'
+    )
+    if h_target in content:
+        content = content.replace(h_target, parent_backup_comp + h_target, 1)
+        print("[web-patch] Successfully injected ParentTestBackupScreen before H_")
+    else:
+        print("[web-patch] H_ target not found in main.js", file=sys.stderr)
+        return content, False
+
+    return content, True
+
+
 def patch_terminal_touch_scroll(content):
     # 1. Update CK(a) drawer swipe ignore check to include terminal selectors
     ck_target = 'function CK(a){return!!a?.closest("[data-base-ui-swipe-ignore]")}'
@@ -1440,6 +1537,10 @@ def patch_main(file_path):
 
     content, ok_sync = patch_sync_conversations(content)
     if not ok_sync:
+        return False
+
+    content, ok_test_br = patch_test_backup_restore(content)
+    if not ok_test_br:
         return False
 
     content, ok_term = patch_terminal_touch_scroll(content)

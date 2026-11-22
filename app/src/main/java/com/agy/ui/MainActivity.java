@@ -162,6 +162,7 @@ public class MainActivity extends Activity
         androidBridge.setActivity(this);
         webViewHost = new WebViewHost(this, themeManager, oauthManager, androidBridge, this);
         webViewHost.setListener(this);
+        com.agy.backup.BackupManager.getInstance(this).attachWebView(webViewHost.getWebView());
 
         rootLayout = new FrameLayout(this);
         rootLayout.setBackgroundColor(themeManager.getBackgroundColor());
@@ -314,6 +315,7 @@ public class MainActivity extends Activity
         if (webViewHost != null) {
             WebView wv = webViewHost.getWebView();
             if (wv != null) {
+                com.agy.backup.BackupManager.getInstance(this).detachWebView(wv);
                 try {
                     wv.stopLoading();
                     wv.setWebChromeClient(null);
@@ -509,10 +511,64 @@ public class MainActivity extends Activity
     public static final int REQUEST_RESTORE_CONVERSATIONS = 2004;
     public static final int REQUEST_BACKUP_PROJECTS = 2005;
     public static final int REQUEST_RESTORE_PROJECTS = 2006;
+    public static final int REQUEST_BACKUP_EXPORT = 1004;
+    public static final int REQUEST_BACKUP_RESTORE = 1005;
 
     private String pendingConversationBackupScope = null;
     private String pendingProjectBackupName = null;
     private String pendingProjectRestoreTarget = null;
+
+    public WebView getWebView() {
+        return webViewHost != null ? webViewHost.getWebView() : null;
+    }
+
+    public void prepareForCoreRestart() {
+        if (splash != null) {
+            splash.clearFatal();
+            splash.showLoading();
+        }
+        splashDeadline = System.currentTimeMillis() + 120_000L;
+        handler.removeCallbacks(pollServer);
+        handler.post(pollServer);
+    }
+
+    public boolean launchBackupExportPicker(String suggestedFilename) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/zip");
+            intent.putExtra(Intent.EXTRA_TITLE, suggestedFilename);
+            startActivityForResult(intent, REQUEST_BACKUP_EXPORT);
+            return true;
+        } catch (Throwable t) {
+            Log.w(TAG, "ACTION_CREATE_DOCUMENT unavailable: " + t.getMessage());
+            return false;
+        }
+    }
+
+    public void launchBackupRestorePicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                    "application/zip",
+                    "application/x-zip-compressed",
+                    "application/octet-stream"
+            });
+            startActivityForResult(intent, REQUEST_BACKUP_RESTORE);
+        } catch (Throwable t) {
+            Log.w(TAG, "ACTION_OPEN_DOCUMENT failed, falling back to GET_CONTENT: " + t.getMessage());
+            try {
+                Intent fallback = new Intent(Intent.ACTION_GET_CONTENT);
+                fallback.addCategory(Intent.CATEGORY_OPENABLE);
+                fallback.setType("*/*");
+                startActivityForResult(Intent.createChooser(fallback, "Select Backup Archive (.zip)"), REQUEST_BACKUP_RESTORE);
+            } catch (Throwable ex) {
+                Log.e(TAG, "Cannot open backup restore picker: " + ex.getMessage());
+            }
+        }
+    }
 
     public void launchBackupConversationsPicker(String conversationScope) {
         try {
@@ -696,6 +752,23 @@ public class MainActivity extends Activity
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_BACKUP_EXPORT) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                com.agy.backup.BackupManager.getInstance(this).startExportToUri(data.getData());
+            }
+            return;
+        }
+        if (requestCode == REQUEST_BACKUP_RESTORE) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                Uri uri = data.getData();
+                try {
+                    getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (Throwable ignored) {
+                }
+                com.agy.backup.BackupManager.getInstance(this).promptRestoreConfirmation(this, uri);
+            }
+            return;
+        }
         if (requestCode == REQUEST_BACKUP_CONVERSATIONS) {
             if (resultCode != RESULT_OK || data == null || data.getData() == null) {
                 notifyBackupRestoreStatus("backup_conversation", false, "Backup conversations cancelled", null);

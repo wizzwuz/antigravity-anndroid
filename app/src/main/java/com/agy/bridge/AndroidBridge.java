@@ -646,4 +646,96 @@ public final class AndroidBridge {
         }
         return new String(encoded);
     }
+
+    @JavascriptInterface
+    public String getBackupStateJson() {
+        try {
+            return com.agy.backup.BackupManager.getInstance(appContext).getStateJson();
+        } catch (Throwable t) {
+            return "{\"type\":\"idle\",\"message\":\"\",\"percent\":0,"
+                    + "\"conversations\":true,\"skillsPlugins\":true,\"projects\":true}";
+        }
+    }
+
+    @JavascriptInterface
+    public void setBackupOptions(boolean conversations,
+                                 boolean skillsPlugins,
+                                 boolean projects) {
+        try {
+            com.agy.backup.BackupManager.getInstance(appContext)
+                    .setOptions(conversations, skillsPlugins, projects);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @JavascriptInterface
+    public void setBackupOptionsAuth(String authToken,
+                                     boolean conversations,
+                                     boolean skillsPlugins,
+                                     boolean projects) {
+        try {
+            com.agy.backup.BackupManager.getInstance(appContext)
+                    .setOptions(conversations, skillsPlugins, projects);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @JavascriptInterface
+    public void exportBackup(boolean conversations,
+                             boolean skillsPlugins,
+                             boolean projects) {
+        try {
+            com.agy.backup.BackupManager.getInstance(appContext)
+                    .requestExport(MainActivity.activeActivity, conversations, skillsPlugins, projects);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @JavascriptInterface
+    public void exportBackupAuth(String authToken,
+                                 boolean conversations,
+                                 boolean skillsPlugins,
+                                 boolean projects) {
+        try {
+            com.agy.backup.BackupManager.getInstance(appContext)
+                    .requestExport(MainActivity.activeActivity, conversations, skillsPlugins, projects);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @JavascriptInterface
+    public void restoreBackup() {
+        try {
+            com.agy.backup.BackupManager.getInstance(appContext)
+                    .requestRestore(MainActivity.activeActivity);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @JavascriptInterface
+    public void restoreBackupAuth(String authToken) {
+        try {
+            com.agy.backup.BackupManager.getInstance(appContext)
+                    .requestRestore(MainActivity.activeActivity);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @JavascriptInterface
+    public void refreshBackupStats(boolean force) {
+        try {
+            com.agy.backup.BackupManager.getInstance(appContext)
+                    .refreshStatsAsync(force);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @JavascriptInterface
+    public void refreshBackupStatsAuth(String authToken, boolean force) {
+        try {
+            com.agy.backup.BackupManager.getInstance(appContext)
+                    .refreshStatsAsync(force);
+        } catch (Throwable ignored) {
+        }
+    }
 }

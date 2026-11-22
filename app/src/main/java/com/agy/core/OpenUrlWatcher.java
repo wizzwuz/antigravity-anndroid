@@ -4,34 +4,67 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.net.Uri;
 import android.os.Build;
+import android.os.FileObserver;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import com.agy.bridge.NotificationBridge;
 import com.agy.oauth.OAuthManager;
 import com.agy.ui.MainActivity;
-import com.agy.util.SensitiveDataRedactor;
 
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Dispatches external browser URLs and OAuth flows detected from the core's
- * stdout stream or explicit ACTION_OPEN_URL broadcasts.
+ * stdout stream, explicit ACTION_OPEN_URL broadcasts, or the userspace
+ * $HOME/.open_url_queue IPC file (used when xdg-open runs inside a PTY/subshell
+ * where stdout does not go to CoreProcessSupervisor and /system/bin/am is blocked).
  */
 public final class OpenUrlWatcher {
 
     private static final String TAG = "OpenUrlWatcher";
+    public static final String QUEUE_FILE_NAME = ".open_url_queue";
+    public static final String NOTIFY_QUEUE_FILE_NAME = ".notify_queue";
     private static final Pattern URL_PATTERN =
             Pattern.compile("https?://[\\w\\-\\.\\~:\\?\\#\\[\\]\\@\\!\\$\\&\\'\\(\\)\\*\\+,;=%/]+");
 
     private final Context appContext;
     private final OAuthManager oauth = new OAuthManager();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Object queueLock = new Object();
+    private final Object notifyLock = new Object();
+    private final File queueFile;
+    private final File notifyQueueFile;
 
     private volatile String lastDispatchedUrl = "";
     private volatile long lastDispatchedTime = 0;
+    private FileObserver queueObserver;
+    private ScheduledExecutorService queuePoller;
+
+    private static String redactUrl(String url) {
+        if (url == null || url.isEmpty()) return "";
+        int q = url.indexOf('?');
+        int h = url.indexOf('#');
+        int cut = (q >= 0 && h >= 0) ? Math.min(q, h) : (q >= 0 ? q : h);
+        return cut >= 0 ? url.substring(0, cut) : url;
+    }
 
     private final BroadcastReceiver openUrlReceiver = new BroadcastReceiver() {
         @Override
@@ -39,8 +72,7 @@ public final class OpenUrlWatcher {
             if (intent == null) return;
             String url = intent.getStringExtra("url");
             if (url != null && !url.trim().isEmpty()) {
-                Log.i(TAG, "broadcast ACTION_OPEN_URL received: "
-                        + SensitiveDataRedactor.safeUrl(url));
+                Log.i(TAG, "broadcast ACTION_OPEN_URL received: " + redactUrl(url));
                 dispatchIfValid(url);
             }
         }
@@ -48,24 +80,103 @@ public final class OpenUrlWatcher {
 
     public OpenUrlWatcher(Context context) {
         this.appContext = context.getApplicationContext();
+        this.queueFile = new File(this.appContext.getFilesDir(), QUEUE_FILE_NAME);
+        this.notifyQueueFile = new File(this.appContext.getFilesDir(), NOTIFY_QUEUE_FILE_NAME);
     }
 
+    @SuppressWarnings("deprecation")
     public void start() {
         try {
-            IntentFilter filter = new IntentFilter("com.agy.ACTION_OPEN_URL");
-            // The /system/bin/am shim is launched by the app-owned core process.
-            // Keep delivery inside this signed app UID; external apps cannot spoof it.
-            String senderPermission = appContext.getPackageName()
-                    + ".permission.INTERNAL_BROADCAST";
-            if (Build.VERSION.SDK_INT >= 33) {
-                appContext.registerReceiver(openUrlReceiver, filter, senderPermission, null,
-                        Context.RECEIVER_NOT_EXPORTED);
-            } else {
-                appContext.registerReceiver(openUrlReceiver, filter, senderPermission, null);
+            if (queueFile.isFile()) {
+                queueFile.delete();
             }
-            Log.i(TAG, "registered protected ACTION_OPEN_URL receiver");
+            NotificationBridge.syncActiveSnapshot(appContext);
+        } catch (Throwable ignored) {
+        }
+        try {
+            IntentFilter filter = new IntentFilter("com.agy.ACTION_OPEN_URL");
+            if (Build.VERSION.SDK_INT >= 33) {
+                appContext.registerReceiver(openUrlReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                appContext.registerReceiver(openUrlReceiver, filter);
+            }
+            Log.i(TAG, "registered ACTION_OPEN_URL receiver");
         } catch (Throwable t) {
             Log.w(TAG, "failed to register ACTION_OPEN_URL receiver: " + t.getMessage());
+        }
+        try {
+            final int mask = FileObserver.CLOSE_WRITE | FileObserver.MODIFY
+                    | FileObserver.MOVED_TO | FileObserver.CREATE;
+            queueObserver = new FileObserver(appContext.getFilesDir().getAbsolutePath(), mask) {
+                @Override
+                public void onEvent(int event, String path) {
+                    if (QUEUE_FILE_NAME.equals(path)) {
+                        drainQueueFile();
+                    } else if (NOTIFY_QUEUE_FILE_NAME.equals(path)) {
+                        drainNotifyQueueFile();
+                    }
+                }
+            };
+            queueObserver.startWatching();
+        } catch (Throwable t) {
+            Log.w(TAG, "FileObserver setup notice: " + t.getMessage());
+        }
+        try {
+            queuePoller = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "OpenUrlQueueWatcher");
+                t.setDaemon(true);
+                return t;
+            });
+            queuePoller.scheduleWithFixedDelay(() -> {
+                drainQueueFile();
+                drainNotifyQueueFile();
+            }, 600, 600, TimeUnit.MILLISECONDS);
+        } catch (Throwable t) {
+            Log.w(TAG, "queuePoller setup notice: " + t.getMessage());
+        }
+    }
+
+    private void drainNotifyQueueFile() {
+        if (!notifyQueueFile.isFile() || notifyQueueFile.length() == 0) {
+            return;
+        }
+        List<String> lines = new ArrayList<>();
+        synchronized (notifyLock) {
+            if (!notifyQueueFile.isFile() || notifyQueueFile.length() == 0) {
+                return;
+            }
+            File snap = new File(notifyQueueFile.getParentFile(), NOTIFY_QUEUE_FILE_NAME + ".drain");
+            snap.delete();
+            File readTarget = notifyQueueFile.renameTo(snap) ? snap : notifyQueueFile;
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(new FileInputStream(readTarget), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    String trimmed = line.trim();
+                    if (!trimmed.isEmpty()) {
+                        lines.add(trimmed);
+                    }
+                }
+            } catch (Throwable ignored) {
+            } finally {
+                readTarget.delete();
+            }
+        }
+        for (String raw : lines) {
+            try {
+                JSONObject obj = new JSONObject(raw);
+                String action = obj.optString("action", "post");
+                if ("cancel".equals(action)) {
+                    NotificationBridge.cancelLocal(appContext, obj.optString("tag", ""));
+                } else {
+                    NotificationBridge.postLocal(
+                            appContext,
+                            obj.optString("title", ""),
+                            obj.optString("message", ""),
+                            obj.optString("tag", ""));
+                }
+            } catch (Throwable ignored) {
+            }
         }
     }
 
@@ -73,6 +184,51 @@ public final class OpenUrlWatcher {
         try {
             appContext.unregisterReceiver(openUrlReceiver);
         } catch (Throwable ignored) {
+        }
+        try {
+            if (queueObserver != null) {
+                queueObserver.stopWatching();
+                queueObserver = null;
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            if (queuePoller != null) {
+                queuePoller.shutdownNow();
+                queuePoller = null;
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void drainQueueFile() {
+        if (!queueFile.isFile() || queueFile.length() == 0) {
+            return;
+        }
+        List<String> urls = new ArrayList<>();
+        synchronized (queueLock) {
+            if (!queueFile.isFile() || queueFile.length() == 0) {
+                return;
+            }
+            File snap = new File(queueFile.getParentFile(), QUEUE_FILE_NAME + ".drain");
+            snap.delete();
+            File readTarget = queueFile.renameTo(snap) ? snap : queueFile;
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(new FileInputStream(readTarget), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    String trimmed = line.trim();
+                    if (!trimmed.isEmpty()) {
+                        urls.add(trimmed);
+                    }
+                }
+            } catch (Throwable ignored) {
+            } finally {
+                readTarget.delete();
+            }
+        }
+        for (String u : urls) {
+            dispatchIfValid(u);
         }
     }
 
@@ -89,28 +245,67 @@ public final class OpenUrlWatcher {
                 return;
             }
         }
-        // Fallback: detect OAuth or login URLs emitted by language_server / openBrowser
-        if (line.contains("accounts.google.com")
-                || (line.contains("/auth/callback") && line.contains("http"))) {
+        // Fallback: detect interactive Google OAuth login URLs emitted without an OPEN_URL prefix,
+        // while ignoring Go net/http error logs and machine-to-machine *.googleapis.com endpoints.
+        if (isGoHttpLogLine(line)) {
+            return;
+        }
+        if (line.contains("accounts.google.com/o/oauth2/") || line.contains("antigravity.google/")) {
             Matcher m = URL_PATTERN.matcher(line);
             while (m.find()) {
                 String candidate = m.group();
-                if (candidate.startsWith("http://") || candidate.startsWith("https://")) {
-                    // Ignore internal backend API endpoints and userinfo requests
-                    if (candidate.contains("googleapis.com/oauth2/v2/userinfo")
-                            || candidate.contains("googleapis.com/auth")
-                            || candidate.contains("daily-cloudcode-pa.googleapis.com")) {
-                        continue;
-                    }
-                    if (candidate.contains("accounts.google.com")
-                            || candidate.contains("/auth/callback")
-                            || candidate.contains("antigravity.google/auth")) {
-                        Log.i(TAG, "stream regex detected auth URL: "
-                                + SensitiveDataRedactor.safeUrl(candidate));
-                        dispatchIfValid(candidate);
-                    }
+                if (isInteractiveAuthFallbackUrl(candidate)) {
+                    Log.i(TAG, "stream regex detected auth URL: " + redactUrl(candidate));
+                    dispatchIfValid(candidate);
                 }
             }
+        }
+    }
+
+    private static boolean isGoHttpLogLine(String line) {
+        return line.contains("Get \"http")
+                || line.contains("Post \"http")
+                || line.contains("Head \"http")
+                || line.contains("http_helpers.go:")
+                || line.contains("cache.go:")
+                || line.contains("errorreport.go:")
+                || line.contains("error_parsing.go:")
+                || line.contains("rpcs_plugin_auth.go:");
+    }
+
+    private static boolean isInteractiveAuthFallbackUrl(String url) {
+        if (url == null || url.contains("client_id=mock-client")) {
+            return false;
+        }
+        try {
+            Uri uri = Uri.parse(url);
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            String path = uri.getPath();
+            if (scheme == null || host == null) {
+                return false;
+            }
+            if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
+                return false;
+            }
+            host = host.toLowerCase(Locale.US);
+            if (host.equals("googleapis.com") || host.endsWith(".googleapis.com")) {
+                return false;
+            }
+            if (path == null) {
+                path = "";
+            }
+            if ((host.equals("accounts.google.com") || host.endsWith(".accounts.google.com"))
+                    && path.startsWith("/o/oauth2/")) {
+                return true;
+            }
+            if ((host.equals("antigravity.google") || host.endsWith(".antigravity.google"))
+                    && path.contains("/auth")) {
+                return true;
+            }
+            return false;
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 
@@ -119,20 +314,13 @@ public final class OpenUrlWatcher {
         url = url.trim();
         if (url.isEmpty() || (!url.startsWith("http://") && !url.startsWith("https://"))) return;
 
-        // Never dispatch internal Google API endpoints to the user's browser
-        if (url.contains("googleapis.com/oauth2/v2/userinfo")
-                || url.contains("googleapis.com/auth")
-                || url.contains("daily-cloudcode-pa.googleapis.com")) {
-            return;
-        }
-
         long now = System.currentTimeMillis();
         if (url.equals(lastDispatchedUrl) && (now - lastDispatchedTime) < 1500) {
             return;
         }
         lastDispatchedUrl = url;
         lastDispatchedTime = now;
-        Log.i(TAG, "dispatching external URL: " + SensitiveDataRedactor.safeUrl(url));
+        Log.i(TAG, "dispatching external URL: " + redactUrl(url));
         openUrl(url);
     }
 
@@ -145,8 +333,7 @@ public final class OpenUrlWatcher {
                         : appContext;
                 boolean opened = oauth.openInBrowser(target, url);
                 if (!opened) {
-                    Log.w(TAG, "no browser accepted the url: "
-                            + SensitiveDataRedactor.safeUrl(url));
+                    Log.w(TAG, "no browser accepted the url: " + redactUrl(url));
                 }
             }
         });

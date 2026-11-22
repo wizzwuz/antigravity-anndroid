@@ -391,3 +391,7 @@ document.addEventListener('visibilitychange', function() {
     renderSettingsBackupSection();
   }
 });
+
+window.renderSettingsBackupSection = renderSettingsBackupSection;
+window.readNativeBackupState = readNativeBackupState;
+window.syncBackupOptionsToNative = syncBackupOptionsToNative;

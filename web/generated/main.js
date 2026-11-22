@@ -10345,24 +10345,64 @@ A.createElement(W,{name:"refresh",size:14}),"Refresh Devices"
 )
 ));
 };
-var ParentTestBackupScreen=()=>{
-(0,A.useEffect)(()=>{
-try{
-if(typeof readNativeBackupState==="function")readNativeBackupState();
-if(typeof renderSettingsBackupSection==="function")renderSettingsBackupSection();
-}catch(_){}
-var interval=setInterval(()=>{
-try{
-if(typeof readNativeBackupState==="function")readNativeBackupState();
-if(typeof renderSettingsBackupSection==="function")renderSettingsBackupSection();
-}catch(_){}
-},1000);
-return()=>clearInterval(interval);
-},[]);
-return A.createElement("div",{
-className:"p-4 space-y-4 max-w-2xl overflow-y-auto max-h-[85vh]",
-id:"agy-application-settings-anchor"
+var formatBackupBytes=function(b){b=Number(b)||0;if(b<=0)return"0 B";if(b<1024)return b+" B";var k=b/1024;if(k<1024)return k.toFixed(1)+" KB";var m=k/1024;if(m<1024)return m.toFixed(1)+" MB";return(m/1024).toFixed(2)+" GB"};
+var ParentTestBackupScreen=function(){
+var [st,setSt]=(0,A.useState)(function(){
+try{if(window.Android&&typeof window.Android.getBackupStateJson==="function"){var r=window.Android.getBackupStateJson();if(r){var p=JSON.parse(r);if(p&&p.type)return p}}}catch(_){}
+return{type:"idle",message:"",percent:0,conversations:!0,skillsPlugins:!0,projects:!0,statsReady:!1,convBytes:0,convFiles:0,skillsBytes:0,skillsFiles:0,projBytes:0,projFiles:0};
 });
+(0,A.useEffect)(function(){
+try{if(window.Android&&typeof window.Android.refreshBackupStats==="function")window.Android.refreshBackupStats(!1)}catch(_){}
+window.__agOnBackupStateChanged=function(next){try{var p=typeof next==="string"?JSON.parse(next):next;if(p&&p.type)setSt(p)}catch(_){}};
+var iv=setInterval(function(){try{if(window.Android&&typeof window.Android.getBackupStateJson==="function"){var r=window.Android.getBackupStateJson();if(r){var p=JSON.parse(r);if(p&&p.type)setSt(p)}}}catch(_){}},1000);
+return function(){clearInterval(iv)};
+},[]);
+var onToggle=function(key){
+var c=key==="conv"?!st.conversations:!!st.conversations;
+var s=key==="skills"?!st.skillsPlugins:!!st.skillsPlugins;
+var p=key==="proj"?!st.projects:!!st.projects;
+var next=Object.assign({},st,{conversations:c,skillsPlugins:s,projects:p});
+if(next.type==="success"||next.type==="error"){next.type="idle";next.message=""}
+setSt(next);
+try{if(window.Android&&typeof window.Android.setBackupOptions==="function")window.Android.setBackupOptions(c,s,p)}catch(_){}
+};
+var isBusy=st.type==="exporting"||st.type==="restoring";
+var cChk=st.conversations!==!1,sChk=st.skillsPlugins!==!1,pChk=st.projects!==!1;
+var noneSel=!cChk&&!sChk&&!pChk;
+var selBytes=(cChk?(Number(st.convBytes)||0):0)+(sChk?(Number(st.skillsBytes)||0):0)+(pChk?(Number(st.projBytes)||0):0);
+var selFiles=(cChk?(Number(st.convFiles)||0):0)+(sChk?(Number(st.skillsFiles)||0):0)+(pChk?(Number(st.projFiles)||0):0);
+var descText=isBusy?(st.message||(st.type==="exporting"?"Exporting backup...":"Restoring backup...")):(st.type==="error"&&st.message?String(st.message):(st.type==="success"&&st.message&&!noneSel?String(st.message):(noneSel?"Select at least one category below to export.":(st.statsReady?"Selected: "+formatBackupBytes(selBytes)+" uncompressed ("+selFiles+" files) · compressed into .zip on save.":"Calculating category sizes..."))));
+var badgeText=isBusy?(st.type==="exporting"?"Exporting":"Restoring"):(st.type==="error"?"Error":(st.type==="success"&&!noneSel?"Done":(noneSel?"0 B":".zip · "+formatBackupBytes(selBytes))));
+return A.createElement("div",{className:"p-4 space-y-4 max-w-2xl overflow-y-auto max-h-[85vh] w-full",id:"agy-application-settings-anchor"},
+A.createElement("div",{className:"flex flex-col gap-1"},
+A.createElement("h3",{className:"m-0 font-medium text-lg"},"test backup/restore"),
+A.createElement("p",{className:"text-xs text-muted-foreground m-0"},"Upstream Parent Backup & Restore Engine (com.agy.backup.BackupManager)")),
+A.createElement("div",{className:"agy-card bg-transparent rounded-xl border border-border overflow-hidden divide-y divide-border"},
+A.createElement("div",{className:"py-3 px-4 w-full bg-transparent flex flex-wrap justify-between gap-3 items-center"},
+A.createElement("div",{className:"flex-1 min-w-[200px] flex flex-col gap-1"},
+A.createElement("div",{className:"flex items-center gap-2 flex-wrap"},
+A.createElement("span",{className:"font-semibold text-sm"},"Portable User Data"),
+A.createElement("span",{className:"text-[10px] font-semibold leading-none bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full select-none border border-border"},badgeText)),
+A.createElement("span",{className:"text-xs "+(st.type==="error"?"text-destructive":"text-muted-foreground")},descText),
+isBusy?A.createElement("div",{style:{width:"100%",height:"4px",borderRadius:"9999px",background:"rgba(128,128,128,0.2)",overflow:"hidden",marginTop:"6px"}},
+A.createElement("div",{style:{width:Math.max(3,Math.min(100,Number(st.percent)||5))+"%",height:"100%",background:"#3b82f6",borderRadius:"9999px"}})):null),
+A.createElement("div",{className:"flex items-center gap-2 flex-wrap shrink-0"},
+A.createElement("button",{type:"button",disabled:isBusy||noneSel,onClick:function(){try{if(window.Android&&typeof window.Android.exportBackup==="function")window.Android.exportBackup(cChk,sChk,pChk)}catch(_){}},className:"px-3 py-1.5 rounded-full text-xs font-medium border border-border cursor-pointer "+(isBusy||noneSel?"bg-secondary text-muted-foreground opacity-50 cursor-not-allowed":"bg-secondary text-secondary-foreground hover:opacity-90")},st.type==="exporting"?"Exporting...":"Export Backup"),
+A.createElement("button",{type:"button",disabled:isBusy,onClick:function(){try{if(window.Android&&typeof window.Android.restoreBackup==="function")window.Android.restoreBackup()}catch(_){}},className:"px-3 py-1.5 rounded-full text-xs font-medium border border-border cursor-pointer "+(isBusy?"bg-secondary text-muted-foreground opacity-50 cursor-not-allowed":"bg-secondary text-secondary-foreground hover:opacity-90")},st.type==="restoring"?"Restoring...":"Restore Backup"))),
+A.createElement("div",{className:"py-3 px-4 w-full bg-transparent flex flex-col gap-2"},
+A.createElement("div",{className:"flex items-center gap-4 flex-wrap"},
+A.createElement("label",{className:"inline-flex items-center gap-2 text-xs select-none cursor-pointer py-1 pr-2"},
+A.createElement("input",{type:"checkbox",checked:cChk,disabled:isBusy,onChange:function(){onToggle("conv")},style:{width:"15px",height:"15px",accentColor:"#3b82f6",cursor:"pointer",margin:0}}),
+A.createElement("span",null,st.statsReady?"Conversations & Artifacts ("+formatBackupBytes(st.convBytes)+")":"Conversations & Artifacts")),
+A.createElement("label",{className:"inline-flex items-center gap-2 text-xs select-none cursor-pointer py-1 pr-2"},
+A.createElement("input",{type:"checkbox",checked:sChk,disabled:isBusy,onChange:function(){onToggle("skills")},style:{width:"15px",height:"15px",accentColor:"#3b82f6",cursor:"pointer",margin:0}}),
+A.createElement("span",null,st.statsReady?"Skills, Rules & Plugins ("+formatBackupBytes(st.skillsBytes)+")":"Skills, Rules & Plugins")),
+A.createElement("label",{className:"inline-flex items-center gap-2 text-xs select-none cursor-pointer py-1 pr-2"},
+A.createElement("input",{type:"checkbox",checked:pChk,disabled:isBusy,onChange:function(){onToggle("proj")},style:{width:"15px",height:"15px",accentColor:"#3b82f6",cursor:"pointer",margin:0}}),
+A.createElement("span",null,st.statsReady?"Projects & Settings ("+formatBackupBytes(st.projBytes)+")":"Projects & Settings"))),
+A.createElement("div",{className:"text-[11px] text-muted-foreground flex items-center gap-1.5 pt-1 border-t border-border/50"},
+A.createElement("span",null,"Notice: "),
+A.createElement("span",null,"Archives are standard unencrypted .zip files containing your selected scopes. Keep them secure.")))));
 };
 var H_=()=>{var a=ck(),b=lqb(),c=$t(),e=PC(),f=PC(),[g,h]=(0,A.useState)(""),[k,l]=(0,A.useState)(""),[m,n]=(0,A.useState)(ICb[0]),[q,r]=(0,A.useState)(!0),[t,u]=(0,A.useState)(!1),[v,w]=(0,A.useState)(!0),[x,y]=(0,A.useState)({type:"",message:""}),[B,C]=(0,A.useState)(),D=(0,A.useRef)(null),E=jS().product,F=Lj().get("feedback"),G=F?.listnrProductId??"5372208",H=F?.ideName??E.applicationName;E=E.version||"unknown";F=F?.getMetadata?.();var J=F?.productVersion??E,K=F?.fields??{},L={ideVersion:E,...K};
 F=O=>{l(O.target.value)};E=()=>{C(void 0);D.current&&(D.current.value="")};var M=()=>{var O=[];O.push({key:"ideName",value:H,type:1});for(let [P,Q]of Object.entries(L))O.push({key:P,value:Q,type:1});O.push({key:"feedbackType",value:FCb[m],type:1});O.push({key:"userEmail",value:q?a.email:"",type:1});return O},N=async O=>{var P=d,Q=d;try{let S;if(v&&O)try{var R=(new TextEncoder).encode(O);let U=(new Blob([R])).stream().pipeThrough(new CompressionStream("gzip")),Y=new Response(U),ea=Q(await P(Y.arrayBuffer())),

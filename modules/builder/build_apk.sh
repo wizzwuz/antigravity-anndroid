@@ -72,6 +72,9 @@ while [ $# -gt 0 ]; do
 done
 
 BASE_PREFIX="${CUSTOM_PREFIX:-antigravity}"
+PKG_BASE="$(sed -n -E 's/^PKG=([^[:space:]]+)/\1/p' "$PROJECT_ROOT/config/app.env" 2>/dev/null | head -n 1)"
+PKG_BASE="${PKG_BASE:-com.agy.wizzwuz}"
+PKG_DEV="${PKG_BASE}.dev"
 
 if [ -n "$CUSTOM_OUT" ]; then
     OUT_APK="$CUSTOM_OUT"
@@ -79,18 +82,18 @@ if [ -n "$CUSTOM_OUT" ]; then
 elif [ "$DEV_MODE" = "1" ]; then
     if [ "$NO_BYPASS" = "0" ]; then
         OUT_APK="$DIST_DIR/${BASE_PREFIX}-dev-region-bypass.apk"
-        EDITION_LABEL="DEV EDITION WITH REGION BYPASS (com.agy.dev, port 45158, debuggable)"
+        EDITION_LABEL="DEV EDITION WITH REGION BYPASS ($PKG_DEV, port 45158, debuggable)"
     else
         OUT_APK="$DIST_DIR/${BASE_PREFIX}-dev.apk"
-        EDITION_LABEL="DEV EDITION STANDARD (com.agy.dev, port 45158, debuggable, standard gates)"
+        EDITION_LABEL="DEV EDITION STANDARD ($PKG_DEV, port 45158, debuggable, standard gates)"
     fi
 else
     if [ "$NO_BYPASS" = "0" ]; then
         OUT_APK="$DIST_DIR/${BASE_PREFIX}-region-bypass.apk"
-        EDITION_LABEL="RELEASE EDITION WITH REGION BYPASS (com.agy, port 45157, with account eligibility bypass)"
+        EDITION_LABEL="RELEASE EDITION WITH REGION BYPASS ($PKG_BASE, port 45157, with account eligibility bypass)"
     else
         OUT_APK="$DIST_DIR/${BASE_PREFIX}.apk"
-        EDITION_LABEL="RELEASE EDITION STANDARD (com.agy, port 45157, original gates)"
+        EDITION_LABEL="RELEASE EDITION STANDARD ($PKG_BASE, port 45157, original gates)"
     fi
 fi
 

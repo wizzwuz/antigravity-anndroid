@@ -1410,6 +1410,10 @@ document.addEventListener('visibilitychange', function() {
   }
 });
 
+window.renderSettingsBackupSection = renderSettingsBackupSection;
+window.readNativeBackupState = readNativeBackupState;
+window.syncBackupOptionsToNative = syncBackupOptionsToNative;
+
 /**
  * core/public-api.js - expose window.__agBridgeCore.
  *

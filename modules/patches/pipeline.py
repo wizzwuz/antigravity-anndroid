@@ -23,6 +23,8 @@ import faccessat
 import fchmodat
 import sigill_handler
 import resolv_redirect
+import hosts_redirect
+import loopback_bind
 import crash_suppressor
 import pty_shell
 import reporter
@@ -34,6 +36,8 @@ ACTIVE_MODULES = [
     fchmodat,
     sigill_handler,
     resolv_redirect,
+    hosts_redirect,
+    loopback_bind,
     crash_suppressor,
     pty_shell
 ]

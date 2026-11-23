@@ -30,8 +30,12 @@
     },
     {
       "name": "resolv",
-      "description": "Redirect /etc/resolv.conf",
-      "expected": 2
+      "description": "Redirect /etc/resolv.conf and /etc/hosts, retarget localhost listener to 127.0.0.1",
+      "expected": {
+        "resolv_conf": 2,
+        "hosts": 2,
+        "loopback_bind": 1
+      }
     },
     {
       "name": "failfast",

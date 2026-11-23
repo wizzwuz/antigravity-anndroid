@@ -32,6 +32,12 @@ public final class NetworkConfigWriter {
             resolv.append("nameserver ").append(ip).append('\n');
         }
         AtomicFileWriter.writeText(new File(etc, "resolv.conf"), resolv.toString());
-        AtomicFileWriter.writeText(new File(etc, "hosts"), "127.0.0.1 localhost\n");
+        StringBuilder hosts = new StringBuilder();
+        hosts.append("127.0.0.1 localhost\n");
+        hosts.append("::1 localhost\n");
+        hosts.append("127.0.0.1 localhost.localdomain\n");
+        hosts.append("::1 ip6-localhost\n");
+        hosts.append("::1 ip6-loopback\n");
+        AtomicFileWriter.writeText(new File(etc, "hosts"), hosts.toString());
     }
 }

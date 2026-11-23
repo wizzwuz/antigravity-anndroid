@@ -1,32 +1,29 @@
 """
-loopback_bind.py - Retargets core listener bind address from localhost (9 bytes) -> 127.0.0.1 (9 bytes).
-Prevents net.Listen from performing DNS queries on localhost which fails with NXDOMAIN on public DNS.
+loopback_bind.py - Retargets core listener and OAuth callback bind addresses:
+1. Core HTTPS server: localhost (9 bytes) -> 127.0.0.1 (9 bytes)
+2. OAuth listener: localhost:0 (11 bytes) -> 127.0.0.1:0 (11 bytes)
+3. OAuth callback URL: http://localhost:%d/auth/callback (33 bytes) -> http://127.0.0.1:%d/auth/callback (33 bytes)
+Prevents Chrome/system DNS lookup failures (NXDOMAIN) on Android for localhost.
 """
 from typing import Tuple, Dict, Any, List, Union
 
-TARGET = b"GEMINI.mdAGENTS.mdlocalhostPageToken"
-REPLACEMENT = b"GEMINI.mdAGENTS.md127.0.0.1PageToken"
-EXPECTED_COUNT = 1
+PAIRS = [
+    (b"GEMINI.mdAGENTS.mdlocalhostPageToken", b"GEMINI.mdAGENTS.md127.0.0.1PageToken"),
+    (b"listPluginslocalhost:0", b"listPlugins127.0.0.1:0"),
+    (b"http://localhost:%d/auth/callback", b"http://127.0.0.1:%d/auth/callback")
+]
+EXPECTED_COUNT = len(PAIRS)
 
 def scan(data: Union[bytes, bytearray, memoryview]) -> Tuple[List[int], List[int]]:
     clean = []
     repl = []
-    pos = 0
-    while True:
-        pos = data.find(TARGET, pos)
-        if pos < 0:
-            break
-        clean.append(pos)
-        pos += len(TARGET)
-
-    pos = 0
-    while True:
-        pos = data.find(REPLACEMENT, pos)
-        if pos < 0:
-            break
-        repl.append(pos)
-        pos += len(REPLACEMENT)
-
+    for target, replacement in PAIRS:
+        pos = data.find(target)
+        if pos >= 0:
+            clean.append(pos)
+        pos_r = data.find(replacement)
+        if pos_r >= 0:
+            repl.append(pos_r)
     return clean, repl
 
 def apply(data: bytearray, verify: bool = False, dry_run: bool = False, allow_missing: bool = False) -> Tuple[bool, Dict[str, Any]]:
@@ -63,8 +60,10 @@ def apply(data: bytearray, verify: bool = False, dry_run: bool = False, allow_mi
         return True, info
 
     if not dry_run:
-        for pos in clean:
-            data[pos:pos + len(REPLACEMENT)] = REPLACEMENT
+        for target, replacement in PAIRS:
+            pos = data.find(target)
+            if pos >= 0:
+                data[pos:pos + len(replacement)] = replacement
         info["status"] = "patched"
     else:
         info["status"] = "dry_run"

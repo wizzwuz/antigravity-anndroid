@@ -31,7 +31,7 @@ public final class NotificationHandler {
     private static final String TAG = "NotificationHandler";
 
     public static final String CHANNEL_TASK_PROGRESS = "task_progress";
-    public static final String CHANNEL_TASK_ALERTS_COMPLETION = "task_alerts_floating_v2";
+    public static final String CHANNEL_TASK_ALERTS_COMPLETION = "task_alerts_floating_v3";
 
     // Legacy and polyfill compatibility aliases
     public static final String CHANNEL_AGENT_PROGRESS = "agent_progress";
@@ -72,12 +72,13 @@ public final class NotificationHandler {
             progressChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             manager.createNotificationChannel(progressChannel);
 
-            // Delete previous channel without sound if present
+            // Delete previous channels if present
             try {
                 manager.deleteNotificationChannel(CHANNEL_TASK_ALERTS_COMPLETION_OLD);
+                manager.deleteNotificationChannel("task_alerts_floating_v2");
             } catch (Throwable ignored) {}
 
-            // 2. Antigravity Task Alerts and Completion: floating heads-up alerts & completions
+            // 2. Antigravity Task Alerts and Completion: floating heads-up alerts & completions (silent)
             NotificationChannel alertsChannel = new NotificationChannel(
                     CHANNEL_TASK_ALERTS_COMPLETION,
                     "Antigravity Task Alerts and Completion",
@@ -90,15 +91,7 @@ public final class NotificationHandler {
             alertsChannel.setShowBadge(true);
             alertsChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             alertsChannel.setBypassDnd(true);
-
-            Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-            if (soundUri != null) {
-                AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
-                        .build();
-                alertsChannel.setSound(soundUri, audioAttributes);
-            }
+            alertsChannel.setSound(null, null);
             manager.createNotificationChannel(alertsChannel);
 
             // Compatibility channel aliases
@@ -111,13 +104,7 @@ public final class NotificationHandler {
                     CHANNEL_AGENT_COMPLETED, "Antigravity Task Alerts and Completion", NotificationManager.IMPORTANCE_HIGH);
             compatDone.enableLights(true);
             compatDone.enableVibration(true);
-            if (soundUri != null) {
-                AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
-                        .build();
-                compatDone.setSound(soundUri, audioAttributes);
-            }
+            compatDone.setSound(null, null);
             manager.createNotificationChannel(compatDone);
         }
     }
@@ -170,9 +157,10 @@ public final class NotificationHandler {
                 actualTag = "cascade_prog_" + cid;
                 actualId = 10000 + hashOffset;
             } else {
-                actualTag = "cascade_done_" + cid;
-                actualId = 60000 + hashOffset;
-                // Automatically cancel any active progress notification for this conversation
+                long now = System.currentTimeMillis();
+                actualTag = "cascade_done_" + cid + "_" + now;
+                actualId = 60000 + (int)(now % 30000);
+                // Automatically cancel active progress notification for this conversation
                 cancel(context, "cascade_prog_" + cid, 10000 + hashOffset);
             }
         } else {
@@ -217,14 +205,11 @@ public final class NotificationHandler {
         PendingIntent pi = PendingIntent.getActivity(context, actualId, intent, pendingFlags);
         builder.setContentIntent(pi);
 
-        // Configure floating notification (heads-up banner) for alerts and completions
+        // Configure floating notification (heads-up banner) for alerts and completions (silent)
         if (CHANNEL_TASK_ALERTS_COMPLETION.equals(activeChannel)) {
             builder.setPriority(Notification.PRIORITY_MAX);
-            builder.setDefaults(Notification.DEFAULT_ALL);
-            Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-            if (soundUri != null) {
-                builder.setSound(soundUri);
-            }
+            builder.setDefaults(Notification.DEFAULT_LIGHTS | Notification.DEFAULT_VIBRATE);
+            builder.setSound(null, null);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 builder.setCategory(Notification.CATEGORY_REMINDER);
                 builder.setVisibility(Notification.VISIBILITY_PUBLIC);

@@ -25,6 +25,7 @@ src/core/endpoints.js
 src/core/fetch-rewrite.js
 src/core/ws-resume.js
 src/core/updater-bridge.js
+src/core/backup-bridge.js
 src/core/public-api.js
 
 bundle iife patches/web_optimizations.js
@@ -51,6 +52,15 @@ src/patches/theme_sync/resolve.js
 src/patches/theme_sync/notify.js
 src/patches/theme_sync/install.js
 src/patches/theme_sync/public-api.js
+
+bundle iife patches/ui_i18n.js
+src/patches/ui_i18n/config.js
+src/patches/ui_i18n/dict-es.js
+src/patches/ui_i18n/dict-ar.js
+src/patches/ui_i18n/patterns.js
+src/patches/ui_i18n/engine.js
+src/patches/ui_i18n/settings-ui.js
+src/patches/ui_i18n/public-api.js
 
 bundle iife patches/startup_ready.js
 src/patches/startup_ready/signal.js

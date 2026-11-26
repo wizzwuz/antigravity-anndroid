@@ -397,7 +397,7 @@ public final class AndroidBridge {
     }
 
     // =========================================================================
-    // BACKUP & RESTORE
+    // BACKUP & RESTORE (USER CUSTOM)
     // =========================================================================
 
     @JavascriptInterface
@@ -572,5 +572,110 @@ public final class AndroidBridge {
                 }
             });
         }
+    }
+
+    // =========================================================================
+    // NETWORK CONNECTIVITY
+    // =========================================================================
+
+    @JavascriptInterface
+    public boolean isNetworkConnected() {
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) appContext.getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return false;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                android.net.Network network = cm.getActiveNetwork();
+                if (network == null) return false;
+                android.net.NetworkCapabilities caps = cm.getNetworkCapabilities(network);
+                return caps != null && caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        && (caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                            || caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED));
+            } else {
+                android.net.NetworkInfo info = cm.getActiveNetworkInfo();
+                return info != null && info.isConnected();
+            }
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    // =========================================================================
+    // BACKUP & RESTORE (PARENT REPO)
+    // =========================================================================
+
+    @JavascriptInterface
+    public String getBackupStateJson() {
+        try {
+            return com.agy.backup.BackupManager.getInstance(appContext).getStateJson();
+        } catch (Throwable t) {
+            return "{\"type\":\"idle\",\"message\":\"\",\"percent\":0,"
+                    + "\"conversations\":true,\"skillsPlugins\":true,\"projects\":true}";
+        }
+    }
+
+    @JavascriptInterface
+    public void setBackupOptionsAuth(String authToken,
+                                     boolean conversations,
+                                     boolean skillsPlugins,
+                                     boolean projects) {
+        if (!isAuthorized(authToken)) return;
+        try {
+            com.agy.backup.BackupManager.getInstance(appContext)
+                    .setOptions(conversations, skillsPlugins, projects);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @JavascriptInterface
+    public void exportBackupAuth(String authToken,
+                                 boolean conversations,
+                                 boolean skillsPlugins,
+                                 boolean projects) {
+        if (!isAuthorized(authToken)) return;
+        try {
+            com.agy.backup.BackupManager.getInstance(appContext)
+                    .requestExport(MainActivity.activeActivity, conversations, skillsPlugins, projects);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @JavascriptInterface
+    public void restoreBackupAuth(String authToken) {
+        if (!isAuthorized(authToken)) return;
+        try {
+            com.agy.backup.BackupManager.getInstance(appContext)
+                    .requestRestore(MainActivity.activeActivity);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @JavascriptInterface
+    public void refreshBackupStatsAuth(String authToken, boolean force) {
+        if (!isAuthorized(authToken)) return;
+        try {
+            com.agy.backup.BackupManager.getInstance(appContext)
+                    .refreshStatsAsync(force);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    // =========================================================================
+    // APP LANGUAGE (I18N)
+    // =========================================================================
+
+    @JavascriptInterface
+    public String getAppLanguage() {
+        return com.agy.i18n.AppLanguageManager.getMode(appContext);
+    }
+
+    @JavascriptInterface
+    public String getResolvedAppLanguage() {
+        return com.agy.i18n.AppLanguageManager.resolveLanguage(appContext);
+    }
+
+    @JavascriptInterface
+    public boolean setAppLanguageAuth(String authToken, String mode) {
+        if (!isAuthorized(authToken)) return false;
+        return com.agy.i18n.AppLanguageManager.setMode(appContext, mode);
     }
 }

@@ -1,219 +1,398 @@
 #!/usr/bin/env python3
 """
-web/patch_main.py - Dynamic patcher for web/main.js (Antigravity v2.32.1 Android UI).
+patch_main.py: Antigravity UI & Engine Webview Patch for Android (v2.35.2)
 
-Applies:
-1. Android Bridge theme sync hooks (window.Android.getTheme / setTheme / setThemeByUser).
-2. Original PC AuxPane v2 redesign (Search tabs/files/plugins/subagents/artifacts/tasks)
-   and the header Overview floating popover button ([📄] OverviewToggleIconButton) on Mobile & Desktop.
-3. Original PC Customizations (Smart Marketplace V3 | Installed) and Automations inside Settings (⚙️).
-4. Voice Mode, Microphone, Permissions Selector badge, /sdcard default path, and touch/menu fixes.
+Patches Antigravity's bundle web/main.js for native Android operation:
+  1. Offline conversation access without login screen redirection
+  2. Eliminates false-positive "No internet. Agent features may not work." banner
+  3. Multi-conversation task progress & completion notifications
+  4. Silent task completion (zero sound on completion)
+  5. Lexical punctuation cursor jumping fix on Android
+  6. Backup and Restore screen (custom user tools + parent tools)
+  7. Notification Settings screen
+  8. Smart Marketplace V3 RPCs & Catalog
+  9. Native Android Select-All & Delete in Lexical editor
+ 10. Conversation search jumping & deep linking (agy://conversation/<cid>)
+ 11. Application Tab & UI Theme / AuxPane integration
 """
 
 import os
+import re
 import sys
 
 
 def must_replace(content, old, new, label):
-    cnt = content.count(old)
-    if cnt != 1:
-        raise RuntimeError(f"[web-patch-2.32.1] expected count=1 for {label}, got {cnt}")
-    print(f"  [OK] {label}")
+    if old not in content:
+        raise RuntimeError(f"patch_main failed: '{label}' target not found")
+    count = content.count(old)
+    if count != 1:
+        raise RuntimeError(f"patch_main failed: '{label}' target matched {count} times (expected 1)")
     return content.replace(old, new, 1)
 
 
-OLD_MP_BLOCK_V3 = 'searchMarketplace:async u=>{typeof window!=="undefined"&&!window.__agMpSmartV3&&(window.__agMpSmartV3=!0,window.__agLoadMarketplaceCatalog=()=>{if(window.__agMpCatalog)return Promise.resolve(window.__agMpCatalog);if(window.__agMpCatalogPromise)return window.__agMpCatalogPromise;window.__agMpCatalogPromise=(async()=>{var base={featured:[],search:{customizations:[],groups:[]},details:{}};try{var r=await fetch("/marketplace_catalog.json");if(r.ok)base=await r.json()}catch(_e){}try{var ac=typeof AbortController!=="undefined"?new AbortController:null,tid=ac?setTimeout(()=>ac.abort(),3500):null,r2=await fetch("https://raw.githubusercontent.com/Yhoanes/antigravity-android-plugins/main/catalog.json",ac?{signal:ac.signal}:void 0);tid&&clearTimeout(tid);if(r2.ok){var rem=await r2.json();if(rem&&typeof rem==="object"){var rc=(rem.search&&rem.search.customizations)||[],bc=(base.search&&base.search.customizations)||[],rIds=new Set(rc.map(x=>x.id)),mc=rc.map(x=>Object.assign({_androidNative:!0},x)).concat(bc.filter(x=>!rIds.has(x.id))),rg2=(rem.search&&rem.search.groups)||[],bg=(base.search&&base.search.groups)||[],rgIds=new Set(rg2.map(x=>x.id)),mg=rg2.concat(bg.filter(x=>!rgIds.has(x.id))),bf=(base.featured||[]).filter(x=>x.id!=="android-featured-hero");base={schema:1,featured:bf,search:{customizations:mc,groups:mg},details:Object.assign({},base.details||{},rem.details||{})}}}}catch(_e2){}window.__agMpCatalog=base;return base})();return window.__agMpCatalogPromise});var _SMR=Fja.file.messages.find(m=>m.name==="SearchMarketplaceResponse")||Fja.file.messages[532],_q=(u.query??"").trim().toLowerCase(),_gid=u.groupId??"",_pt=u.pageToken??"";var [_cat,_sr]=await Promise.all([window.__agLoadMarketplaceCatalog().catch(()=>null),_gid==="built-for-android"?Promise.resolve(null):f(v=>v.searchMarketplace(Vb(Fja,{query:u.query??"",groupId:_gid,pageToken:_pt}))).catch(()=>null)]);try{var _allCat=(_cat&&_cat.search&&_cat.search.customizations)||[],_allGrps=(_cat&&_cat.search&&_cat.search.groups)||[],_hasLive=!!(_sr&&_sr.customizations&&_sr.customizations.length>0);if(_pt&&_hasLive){var _natRaw=_allCat.filter(x=>x._androidNative);if(_natRaw.length>0){var _natMsg=ef(_SMR,{customizations:_natRaw,groups:[]},{ignoreUnknownFields:!0}),_nm=new Map((_natMsg.customizations||[]).map(x=>[x.id,x]));_sr.customizations=_sr.customizations.map(x=>_nm.get(x.id)||x)}return _sr}var _srcItems=_hasLive?_allCat.filter(x=>x._androidNative):_allCat,_srcGrps=_hasLive?_allGrps.filter(x=>x.id==="built-for-android"||x._androidNative):_allGrps;if(_gid){var _g=_allGrps.find(x=>x.id===_gid);_srcItems=_g?_srcItems.filter(x=>_g.memberIds&&_g.memberIds.includes(x.id)):[]}if(_q){_srcItems=_srcItems.filter(x=>(x.displayName||"").toLowerCase().includes(_q)||(x.id||"").toLowerCase().includes(_q)||(x.description||"").toLowerCase().includes(_q))}var _localMsg=ef(_SMR,{customizations:_srcItems,groups:_q||_gid?[]:_srcGrps},{ignoreUnknownFields:!0});if(_hasLive){var _fullNatMsg=ef(_SMR,{customizations:_allCat.filter(x=>x._androidNative),groups:[]},{ignoreUnknownFields:!0}),_natById=new Map((_fullNatMsg.customizations||[]).map(x=>[x.id,x])),_seen=new Set((_localMsg.customizations||[]).map(x=>x.id)),_merged=(_localMsg.customizations||[]).slice();for(var _it of _sr.customizations){var _rep=_natById.get(_it.id)||_it;if(!_seen.has(_rep.id)){_seen.add(_rep.id);_merged.push(_rep)}}var _gSeen=new Set((_localMsg.groups||[]).map(x=>x.id)),_mGrps=_q||_gid?[]:(_localMsg.groups||[]).slice();if(!_q&&!_gid&&_sr.groups){for(var _gp of _sr.groups){if(!_gSeen.has(_gp.id)){_gSeen.add(_gp.id);_mGrps.push(_gp)}}}_localMsg.customizations=_merged;_localMsg.groups=_mGrps;_localMsg.nextPageToken=_sr.nextPageToken||""}return _localMsg}catch(_e2){return _sr||ef(_SMR,{customizations:[],groups:[]},{ignoreUnknownFields:!0})}},getMarketplaceCustomization:async u=>{typeof window!=="undefined"&&!window.__agMpSmartV3&&(window.__agMpSmartV3=!0,window.__agLoadMarketplaceCatalog=()=>{if(window.__agMpCatalog)return Promise.resolve(window.__agMpCatalog);if(window.__agMpCatalogPromise)return window.__agMpCatalogPromise;window.__agMpCatalogPromise=(async()=>{var base={featured:[],search:{customizations:[],groups:[]},details:{}};try{var r=await fetch("/marketplace_catalog.json");if(r.ok)base=await r.json()}catch(_e){}try{var ac=typeof AbortController!=="undefined"?new AbortController:null,tid=ac?setTimeout(()=>ac.abort(),3500):null,r2=await fetch("https://raw.githubusercontent.com/Yhoanes/antigravity-android-plugins/main/catalog.json",ac?{signal:ac.signal}:void 0);tid&&clearTimeout(tid);if(r2.ok){var rem=await r2.json();if(rem&&typeof rem==="object"){var rc=(rem.search&&rem.search.customizations)||[],bc=(base.search&&base.search.customizations)||[],rIds=new Set(rc.map(x=>x.id)),mc=rc.map(x=>Object.assign({_androidNative:!0},x)).concat(bc.filter(x=>!rIds.has(x.id))),rg2=(rem.search&&rem.search.groups)||[],bg=(base.search&&base.search.groups)||[],rgIds=new Set(rg2.map(x=>x.id)),mg=rg2.concat(bg.filter(x=>!rgIds.has(x.id))),bf=(base.featured||[]).filter(x=>x.id!=="android-featured-hero");base={schema:1,featured:bf,search:{customizations:mc,groups:mg},details:Object.assign({},base.details||{},rem.details||{})}}}}catch(_e2){}window.__agMpCatalog=base;return base})();return window.__agMpCatalogPromise});var _GCR=Ija.file.messages.find(m=>m.name==="GetMarketplaceCustomizationResponse")||Ija.file.messages[534],_cat=await window.__agLoadMarketplaceCatalog().catch(()=>null),_localItem=((_cat&&_cat.search&&_cat.search.customizations)||[]).find(x=>x.id===u.id),_localDet=(_cat&&_cat.details&&_cat.details[u.id])||(_localItem?{customization:_localItem}:null);if((_localItem&&_localItem._androidNative)||(_localDet&&_localDet.customization&&_localDet.customization._androidNative)){return ef(_GCR,_localDet,{ignoreUnknownFields:!0})}try{var _gr=await f(v=>v.getMarketplaceCustomization(Vb(Ija,{id:u.id,includePreview:u.includePreview??!1})));if(_gr&&_gr.customization)return _gr}catch(_e){}return ef(_GCR,_localDet||{},{ignoreUnknownFields:!0})},getMarketplaceBundles:async u=>{var _GBR=Eja.file.messages.find(m=>m.name==="GetMarketplaceBundlesResponse")||Eja.file.messages[511];try{return await f(v=>v.getMarketplaceBundles(Vb(Eja,{ids:u.ids??[]})))}catch(_e){return ef(_GBR,{bundles:[],customizations:[]},{ignoreUnknownFields:!0})}},getMarketplaceFeatured:async()=>{typeof window!=="undefined"&&!window.__agMpSmartV3&&(window.__agMpSmartV3=!0,window.__agLoadMarketplaceCatalog=()=>{if(window.__agMpCatalog)return Promise.resolve(window.__agMpCatalog);if(window.__agMpCatalogPromise)return window.__agMpCatalogPromise;window.__agMpCatalogPromise=(async()=>{var base={featured:[],search:{customizations:[],groups:[]},details:{}};try{var r=await fetch("/marketplace_catalog.json");if(r.ok)base=await r.json()}catch(_e){}try{var ac=typeof AbortController!=="undefined"?new AbortController:null,tid=ac?setTimeout(()=>ac.abort(),3500):null,r2=await fetch("https://raw.githubusercontent.com/Yhoanes/antigravity-android-plugins/main/catalog.json",ac?{signal:ac.signal}:void 0);tid&&clearTimeout(tid);if(r2.ok){var rem=await r2.json();if(rem&&typeof rem==="object"){var rc=(rem.search&&rem.search.customizations)||[],bc=(base.search&&base.search.customizations)||[],rIds=new Set(rc.map(x=>x.id)),mc=rc.map(x=>Object.assign({_androidNative:!0},x)).concat(bc.filter(x=>!rIds.has(x.id))),rg2=(rem.search&&rem.search.groups)||[],bg=(base.search&&base.search.groups)||[],rgIds=new Set(rg2.map(x=>x.id)),mg=rg2.concat(bg.filter(x=>!rgIds.has(x.id))),bf=(base.featured||[]).filter(x=>x.id!=="android-featured-hero");base={schema:1,featured:bf,search:{customizations:mc,groups:mg},details:Object.assign({},base.details||{},rem.details||{})}}}}catch(_e2){}window.__agMpCatalog=base;return base})();return window.__agMpCatalogPromise});var _GFR=Gja.file.messages.find(m=>m.name==="GetMarketplaceFeaturedResponse")||Gja.file.messages[525];try{var _fr=await f(u=>u.getMarketplaceFeatured(Vb(Gja,{})));if(_fr&&_fr.featured&&_fr.featured.length>0)return _fr}catch(_e){}try{var _cat=await window.__agLoadMarketplaceCatalog();return ef(_GFR,{featured:((_cat&&_cat.featured)||[]).filter(x=>x.id!=="android-featured-hero"),customizations:(_cat&&_cat.search&&_cat.search.customizations)||[]},{ignoreUnknownFields:!0})}catch(_e2){return ef(_GFR,{featured:[],customizations:[]},{ignoreUnknownFields:!0})}},getOnboardingPersonas:async()=>f(u=>u.getOnboardingPersonas(Vb(Hja,{}))),installCustomization:async u=>{typeof window!=="undefined"&&!window.__agMpSmartV3&&(window.__agMpSmartV3=!0,window.__agLoadMarketplaceCatalog=()=>{if(window.__agMpCatalog)return Promise.resolve(window.__agMpCatalog);if(window.__agMpCatalogPromise)return window.__agMpCatalogPromise;window.__agMpCatalogPromise=(async()=>{var base={featured:[],search:{customizations:[],groups:[]},details:{}};try{var r=await fetch("/marketplace_catalog.json");if(r.ok)base=await r.json()}catch(_e){}try{var ac=typeof AbortController!=="undefined"?new AbortController:null,tid=ac?setTimeout(()=>ac.abort(),3500):null,r2=await fetch("https://raw.githubusercontent.com/Yhoanes/antigravity-android-plugins/main/catalog.json",ac?{signal:ac.signal}:void 0);tid&&clearTimeout(tid);if(r2.ok){var rem=await r2.json();if(rem&&typeof rem==="object"){var rc=(rem.search&&rem.search.customizations)||[],bc=(base.search&&base.search.customizations)||[],rIds=new Set(rc.map(x=>x.id)),mc=rc.map(x=>Object.assign({_androidNative:!0},x)).concat(bc.filter(x=>!rIds.has(x.id))),rg2=(rem.search&&rem.search.groups)||[],bg=(base.search&&base.search.groups)||[],rgIds=new Set(rg2.map(x=>x.id)),mg=rg2.concat(bg.filter(x=>!rgIds.has(x.id))),bf=(base.featured||[]).filter(x=>x.id!=="android-featured-hero");base={schema:1,featured:bf,search:{customizations:mc,groups:mg},details:Object.assign({},base.details||{},rem.details||{})}}}}catch(_e2){}window.__agMpCatalog=base;return base})();return window.__agMpCatalogPromise});var _ICR=Jja.file.messages.find(m=>m.name==="InstallCustomizationResponse")||Jja.file.messages[537],_cat=await window.__agLoadMarketplaceCatalog().catch(()=>null),_c=((_cat&&_cat.search&&_cat.search.customizations)||[]).find(x=>x.id===u.id),_pname=(u.id||"").split("/").pop(),_url=(_c&&_c.source&&_c.source.archive&&_c.source.archive.url)||"",_mp=(_c&&_c.marketplace)||"antigravity-plugins-official",_ver=(_c&&_c.version)||"1.0.0",_isNat=!!(_c&&_c._androidNative)||["agy-video-studio","craft-anything","chrome-devtools-plugin","android-cli-plugin","science"].includes(_pname);if(_isNat&&window.Android&&window.Android.installMarketplacePlugin){try{var _njr=JSON.parse(window.Android.installMarketplacePlugin(_pname,_url,u.id,_mp,_ver));await new Promise(r=>setTimeout(r,350));return ef(_ICR,_njr,{ignoreUnknownFields:!0})}catch(_ne){}}try{var _ir=await f(v=>v.installCustomization(Vb(Jja,{id:u.id,bundleId:u.bundleId})));if(_ir&&_ir.success){try{window.Android&&window.Android.postProcessInstalledPlugin&&window.Android.postProcessInstalledPlugin(_pname)}catch(_pe){}return _ir}}catch(_e){}try{if(window.Android&&window.Android.installMarketplacePlugin){var _jr=JSON.parse(window.Android.installMarketplacePlugin(_pname,_url,u.id,_mp,_ver));await new Promise(r=>setTimeout(r,350));return ef(_ICR,_jr,{ignoreUnknownFields:!0})}}catch(_e2){return ef(_ICR,{success:!1,message:String(_e2)},{ignoreUnknownFields:!0})}return ef(_ICR,{success:!1,message:"Marketplace install unavailable"},{ignoreUnknownFields:!0})},'
-
 LOADER_INIT_V3 = (
-    'typeof window!=="undefined"&&!window.__agMpSmartV3&&(window.__agMpSmartV3=!0,window.__agLoadMarketplaceCatalog=()=>{'
+    'typeof window!=="undefined"&&!window.__agMpSmartV3&&('
+    'window.__agMpSmartV3=!0,'
+    'window.__agLoadMarketplaceCatalog=()=>{'
     'if(window.__agMpCatalog)return Promise.resolve(window.__agMpCatalog);'
     'if(window.__agMpCatalogPromise)return window.__agMpCatalogPromise;'
     'window.__agMpCatalogPromise=(async()=>{'
     'var base={featured:[],search:{customizations:[],groups:[]},details:{}};'
-    'try{var r=await fetch("/marketplace_catalog.json");if(r.ok)base=await r.json()}catch(_e){}'
-    'if(base&&base.search&&base.search.customizations){base.search.customizations.forEach(x=>{x._androidNative=!0})}'
-    'if(base&&base.search&&base.search.groups){base.search.groups.forEach(x=>{x._androidNative=!0})}'
-    'try{var ac=typeof AbortController!=="undefined"?new AbortController:null,tid=ac?setTimeout(()=>ac.abort(),3500):null,'
-    'r2=await fetch("https://raw.githubusercontent.com/Yhoanes/antigravity-android-plugins/main/catalog.json",ac?{signal:ac.signal}:void 0);'
-    'tid&&clearTimeout(tid);'
-    'if(r2.ok){var rem=await r2.json();if(rem&&typeof rem==="object"){'
-    'var rc=(rem.search&&rem.search.customizations)||[],bc=(base.search&&base.search.customizations)||[],rIds=new Set(rc.map(x=>x.id)),'
-    'mc=rc.map(x=>Object.assign({_androidNative:!0},x)).concat(bc.filter(x=>!rIds.has(x.id))),'
-    'rg2=(rem.search&&rem.search.groups)||[],bg=(base.search&&base.search.groups)||[],rgIds=new Set(rg2.map(x=>x.id)),'
-    'mg=rg2.concat(bg.filter(x=>!rgIds.has(x.id))),'
-    'bf=(base.featured||[]).filter(x=>x.id!=="android-featured-hero");'
-    'base={schema:1,featured:bf,search:{customizations:mc,groups:mg},details:Object.assign({},base.details||{},rem.details||{})}'
-    '}}}catch(_e2){}'
-    'window.__agMpCatalog=base;return base})();'
-    'return window.__agMpCatalogPromise});'
-    'typeof window!=="undefined"&&!window.__agJumpInjected&&(window.__agJumpInjected=!0,window.__agTriggerPendingJump=function(){'
-    'var tries=0,timer=setInterval(function(){'
-    'tries++;'
-    'var jump=window.__agPendingConvoJump;'
-    'if(!jump||Date.now()-jump.time>15000||tries>40){clearInterval(timer);return}'
-    'var convoView=document.querySelector(\'[data-testid="conversation-view"]\');'
-    'if(!convoView)return;'
-    'var curCascade=convoView.getAttribute("data-cascade-id");'
-    'if(curCascade&&jump.cascadeId&&curCascade!==jump.cascadeId&&curCascade!=="conversation")return;'
-    'var el=null;'
-    'if(jump.stepIndex!==void 0&&jump.stepIndex!==null){'
-    'el=convoView.querySelector(\'[data-step-index="\'+jump.stepIndex+\'"]\');'
-    '}'
-    'if(!el&&jump.snippet){'
-    'var snip=jump.snippet.replace(/^[.\\s\\u2026]+|[.\\s\\u2026]+$/g,"").trim().toLowerCase();'
-    'if(snip.length>4){'
-    'var words=snip.split(/\\s+/).filter(function(w){return w.length>2}).slice(0,3);'
-    'var walker=document.createTreeWalker(convoView,NodeFilter.SHOW_TEXT);'
-    'var n;'
-    'while(n=walker.nextNode()){'
-    'var t=(n.textContent||"").toLowerCase();'
-    'if(t.includes(snip)||(words.length>0&&words.every(function(w){return t.includes(w)}))){'
-    'el=n.parentElement;break;'
+    'try{'
+    'var r=await fetch("/marketplace_catalog.json");'
+    'if(r.ok){var j=await r.json();base=j||base}'
+    '}catch(_){}'
+    'try{'
+    'if(window.Android&&window.Android.getMarketplaceCatalogJson){'
+    'var raw=window.Android.getMarketplaceCatalogJson();'
+    'if(raw){'
+    'var nat=JSON.parse(raw);'
+    'if(nat&&nat.customizations){'
+    'var seen=new Set((base.search.customizations||[]).map(x=>x.id));'
+    'for(var c of nat.customizations){'
+    'if(!seen.has(c.id)){seen.add(c.id);base.search.customizations.push(c)}'
     '}'
     '}'
     '}'
     '}'
-    'if(!el&&jump.query&&jump.query.length>1){'
-    'var q=jump.query.toLowerCase();'
-    'var walker=document.createTreeWalker(convoView,NodeFilter.SHOW_TEXT);'
-    'var n;'
-    'while(n=walker.nextNode()){'
-    'if((n.textContent||"").toLowerCase().includes(q)){'
-    'el=n.parentElement;break;'
-    '}'
-    '}'
-    '}'
-    'if(el){'
-    'clearInterval(timer);'
-    'window.__agPendingConvoJump=null;'
-    'var target=el.closest(\'[data-testid="agent-response"],[data-step-index],[data-turn-content],.message-row,p,div\')||el;'
-    'target.scrollIntoView({behavior:"smooth",block:"center"});'
-    'var origBg=target.style.backgroundColor,origTr=target.style.transition;'
-    'target.style.transition="background-color 300ms ease";'
-    'target.style.backgroundColor="rgba(255, 235, 59, 0.35)";'
-    'target.style.borderRadius="8px";'
-    'setTimeout(function(){'
-    'target.style.backgroundColor=origBg;'
-    'setTimeout(function(){target.style.transition=origTr},400);'
-    '},1600);'
-    '}'
-    '},120);'
+    '}catch(_e){}'
+    'window.__agMpCatalog=base;'
+    'return base;'
+    '})();'
+    'return window.__agMpCatalogPromise;'
     '})'
 )
 
 NEW_MP_BLOCK_V3 = (
     'searchMarketplace:async u=>{' + LOADER_INIT_V3 + ';'
-    'var _SMR=Fja.file.messages.find(m=>m.name==="SearchMarketplaceResponse")||Fja.file.messages[532],'
+    'var _SMR=Rja.file.messages.find(m=>m.name==="SearchMarketplaceResponse")||Rja.file.messages[514],'
     '_q=(u.query??"").trim().toLowerCase(),_gid=u.groupId??"",_pt=u.pageToken??"";'
-    'var [_cat,_sr]=await Promise.all([window.__agLoadMarketplaceCatalog().catch(()=>null),_gid==="built-for-android"?Promise.resolve(null):f(v=>v.searchMarketplace(Vb(Fja,{query:u.query??"",groupId:_gid,pageToken:_pt}))).catch(()=>null)]);'
+    'var [_cat,_sr]=await Promise.all([window.__agLoadMarketplaceCatalog().catch(()=>null),_gid==="built-for-android"?Promise.resolve(null):f(v=>v.searchMarketplace(kc(Rja,{query:u.query??"",groupId:_gid,pageToken:_pt}))).catch(()=>null)]);'
     'try{var _allCat=(_cat&&_cat.search&&_cat.search.customizations)||[],_allGrps=(_cat&&_cat.search&&_cat.search.groups)||[],_hasLive=!!(_sr&&_sr.customizations&&_sr.customizations.length>0);'
-    'if(_pt&&_hasLive){var _natRaw=_allCat.filter(x=>x._androidNative);if(_natRaw.length>0){var _natMsg=ef(_SMR,{customizations:_natRaw,groups:[]},{ignoreUnknownFields:!0}),_nm=new Map((_natMsg.customizations||[]).map(x=>[x.id,x]));_sr.customizations=_sr.customizations.map(x=>_nm.get(x.id)||x)}return _sr}'
-    'var _srcItems=_allCat,_srcGrps=_allGrps;'
+    'if(_pt&&_hasLive){var _natRaw=_allCat.filter(x=>x._androidNative);if(_natRaw.length>0){var _natMsg=of(_SMR,{customizations:_natRaw,groups:[]},{ignoreUnknownFields:!0}),_nm=new Map((_natMsg.customizations||[]).map(x=>[x.id,x]));_sr.customizations=_sr.customizations.map(x=>_nm.get(x.id)||x)}return _sr}'
+    'var _srcItems=_hasLive?_allCat.filter(x=>x._androidNative):_allCat,_srcGrps=_hasLive?_allGrps.filter(x=>x.id==="built-for-android"||x._androidNative):_allGrps;'
     'if(_gid){var _g=_allGrps.find(x=>x.id===_gid);_srcItems=_g?_srcItems.filter(x=>_g.memberIds&&_g.memberIds.includes(x.id)):[]}'
     'if(_q){_srcItems=_srcItems.filter(x=>(x.displayName||"").toLowerCase().includes(_q)||(x.id||"").toLowerCase().includes(_q)||(x.description||"").toLowerCase().includes(_q))}'
-    'var _localMsg=ef(_SMR,{customizations:_srcItems,groups:_q||_gid?[]:_srcGrps},{ignoreUnknownFields:!0});'
-    'if(_hasLive){var _seen=new Set((_localMsg.customizations||[]).map(x=>x.id)),_merged=(_localMsg.customizations||[]).slice();'
-    'for(var _it of _sr.customizations){if(!_seen.has(_it.id)){_seen.add(_it.id);_merged.push(_it)}}'
+    'var _localMsg=of(_SMR,{customizations:_srcItems,groups:_q||_gid?[]:_srcGrps},{ignoreUnknownFields:!0});'
+    'if(_hasLive){var _fullNatMsg=of(_SMR,{customizations:_allCat.filter(x=>x._androidNative),groups:[]},{ignoreUnknownFields:!0}),_natById=new Map((_fullNatMsg.customizations||[]).map(x=>[x.id,x])),_seen=new Set((_localMsg.customizations||[]).map(x=>x.id)),_merged=(_localMsg.customizations||[]).slice();'
+    'for(var _it of _sr.customizations){var _rep=_natById.get(_it.id)||_it;if(!_seen.has(_rep.id)){_seen.add(_rep.id);_merged.push(_rep)}}'
     'var _gSeen=new Set((_localMsg.groups||[]).map(x=>x.id)),_mGrps=_q||_gid?[]:(_localMsg.groups||[]).slice();'
     'if(!_q&&!_gid&&_sr.groups){for(var _gp of _sr.groups){if(!_gSeen.has(_gp.id)){_gSeen.add(_gp.id);_mGrps.push(_gp)}}}'
     '_localMsg.customizations=_merged;_localMsg.groups=_mGrps;_localMsg.nextPageToken=_sr.nextPageToken||""}'
-    'return _localMsg}catch(_e2){return _sr||ef(_SMR,{customizations:[],groups:[]},{ignoreUnknownFields:!0})}},'
+    'return _localMsg}catch(_e2){return _sr||of(_SMR,{customizations:[],groups:[]},{ignoreUnknownFields:!0})}},'
     'getMarketplaceCustomization:async u=>{' + LOADER_INIT_V3 + ';'
-    'var _GCR=Ija.file.messages.find(m=>m.name==="GetMarketplaceCustomizationResponse")||Ija.file.messages[534],'
-    '_cat=await window.__agLoadMarketplaceCatalog().catch(()=>null),'
-    '_localItem=((_cat&&_cat.search&&_cat.search.customizations)||[]).find(x=>x.id===u.id),'
-    '_localDet=(_cat&&_cat.details&&_cat.details[u.id])||(_localItem?{customization:_localItem}:null);'
-    'if(_localDet&&_localDet.customization){return ef(_GCR,_localDet,{ignoreUnknownFields:!0})}'
-    'try{var _gr=await f(v=>v.getMarketplaceCustomization(Vb(Ija,{id:u.id,includePreview:u.includePreview??!1})));if(_gr&&_gr.customization)return _gr}catch(_e){}'
-    'return ef(_GCR,_localDet||{},{ignoreUnknownFields:!0})},'
-    'getMarketplaceBundles:async u=>{var _GBR=Eja.file.messages.find(m=>m.name==="GetMarketplaceBundlesResponse")||Eja.file.messages[511];try{return await f(v=>v.getMarketplaceBundles(Vb(Eja,{ids:u.ids??[]})))}catch(_e){return ef(_GBR,{bundles:[],customizations:[]},{ignoreUnknownFields:!0})}},'
+    'var _GCR=Uja.file.messages.find(m=>m.name==="GetMarketplaceCustomizationResponse")||Uja.file.messages[535],'
+    '_cat=await window.__agLoadMarketplaceCatalog().catch(()=>null),_localItem=((_cat&&_cat.search&&_cat.search.customizations)||[]).find(x=>x.id===u.id),_localDet=(_cat&&_cat.details&&_cat.details[u.id])||(_localItem?{customization:_localItem}:null);'
+    'if((_localItem&&_localItem._androidNative)||(_localDet&&_localDet.customization&&_localDet.customization._androidNative)){return of(_GCR,_localDet,{ignoreUnknownFields:!0})}'
+    'try{var _gr=await f(v=>v.getMarketplaceCustomization(kc(Uja,{id:u.id,includePreview:u.includePreview??!1})));if(_gr&&_gr.customization)return _gr}catch(_e){}'
+    'return of(_GCR,_localDet||{},{ignoreUnknownFields:!0})},'
+    'getMarketplaceBundles:async u=>{var _GBR=Qja.file.messages.find(m=>m.name==="GetMarketplaceBundlesResponse")||Qja.file.messages[512];try{return await f(v=>v.getMarketplaceBundles(kc(Qja,{ids:u.ids??[]})))}catch(_e){return of(_GBR,{bundles:[],customizations:[]},{ignoreUnknownFields:!0})}},'
     'getMarketplaceFeatured:async()=>{' + LOADER_INIT_V3 + ';'
-    'var _GFR=Gja.file.messages.find(m=>m.name==="GetMarketplaceFeaturedResponse")||Gja.file.messages[525];'
-    'var _cat=await window.__agLoadMarketplaceCatalog().catch(()=>null);'
-    'var _localCust=(_cat&&_cat.search&&_cat.search.customizations)||[];'
-    'var _localFeat=(_cat&&_cat.featured)||[];'
-    'var _androidGrp=((_cat&&_cat.search&&_cat.search.groups)||[]).find(g=>g.id==="built-for-android");'
-    'var _androidShelf=_androidGrp?[{id:"built-for-android-featured",eyebrow:"Built for Android",title:"Built for Android",memberIds:_androidGrp.memberIds||[]}]:[];'
-    'try{var _fr=await f(u=>u.getMarketplaceFeatured(Vb(Gja,{})));if(_fr){'
-    'var _seen=new Set((_fr.customizations||[]).map(x=>x.id)),_cust=(_fr.customizations||[]).slice();'
-    'for(var _lc of _localCust){if(!_seen.has(_lc.id)){_seen.add(_lc.id);_cust.unshift(_lc)}}'
-    'var _feat=_androidShelf.concat(_localFeat).concat(_fr.featured||[]);'
-    'return ef(_GFR,{featured:_feat,customizations:_cust},{ignoreUnknownFields:!0})}}catch(_e){}'
-    'return ef(_GFR,{featured:_androidShelf.concat(_localFeat),customizations:_localCust},{ignoreUnknownFields:!0})},'
-    'getOnboardingPersonas:async()=>f(u=>u.getOnboardingPersonas(Vb(Hja,{}))),'
+    'var _GFR=Sja.file.messages.find(m=>m.name==="GetMarketplaceFeaturedResponse")||Sja.file.messages[526];'
+    'try{var _fr=await f(u=>u.getMarketplaceFeatured(kc(Sja,{})));if(_fr&&_fr.featured&&_fr.featured.length>0)return _fr}catch(_e){}'
+    'try{var _cat=await window.__agLoadMarketplaceCatalog();return of(_GFR,{featured:((_cat&&_cat.featured)||[]).filter(x=>x.id!=="android-featured-hero"),customizations:(_cat&&_cat.search&&_cat.search.customizations)||[]},{ignoreUnknownFields:!0})}catch(_e2){return of(_GFR,{featured:[],customizations:[]},{ignoreUnknownFields:!0})}},'
+    'getOnboardingPersonas:async()=>f(u=>u.getOnboardingPersonas(kc(Tja,{}))),'
     'installCustomization:async u=>{' + LOADER_INIT_V3 + ';'
-    'var _ICR=Jja.file.messages.find(m=>m.name==="InstallCustomizationResponse")||Jja.file.messages[537],'
-    '_cat=await window.__agLoadMarketplaceCatalog().catch(()=>null),'
-    '_c=((_cat&&_cat.search&&_cat.search.customizations)||[]).find(x=>x.id===u.id),'
-    '_pname=(u.id||"").split("/").pop(),'
-    '_url=(_c&&_c.source&&_c.source.archive&&_c.source.archive.url)||"\",'
-    '_mp=(_c&&_c.marketplace)||"antigravity-plugins-official",'
-    '_ver=(_c&&_c.version)||"1.0.0",'
-    '_isNat=!!(_c&&_c._androidNative)||["agy-video-studio","craft-anything","chrome-devtools-plugin","android-cli-plugin","science","github"].includes(_pname)||!!(_cat&&_cat.details&&_cat.details[u.id]);'
-    'if(_isNat&&window.Android&&window.Android.installMarketplacePlugin){try{var _njr=JSON.parse(window.Android.installMarketplacePlugin(_pname,_url,u.id,_mp,_ver));await new Promise(r=>setTimeout(r,350));return ef(_ICR,_njr,{ignoreUnknownFields:!0})}catch(_ne){}}'
-    'try{var _ir=await f(v=>v.installCustomization(Vb(Jja,{id:u.id,bundleId:u.bundleId})));if(_ir&&_ir.success){try{window.Android&&window.Android.postProcessInstalledPlugin&&window.Android.postProcessInstalledPlugin(_pname)}catch(_pe){}return _ir}}catch(_e){}'
-    'try{if(window.Android&&window.Android.installMarketplacePlugin){var _jr=JSON.parse(window.Android.installMarketplacePlugin(_pname,_url,u.id,_mp,_ver));await new Promise(r=>setTimeout(r,350));return ef(_ICR,_jr,{ignoreUnknownFields:!0})}}catch(_e2){return ef(_ICR,{success:!1,message:String(_e2)},{ignoreUnknownFields:!0})}'
-    'return ef(_ICR,{success:!1,message:"Marketplace install unavailable"},{ignoreUnknownFields:!0})},'
+    'var _ICR=Vja.file.messages.find(m=>m.name==="InstallCustomizationResponse")||Vja.file.messages[538],'
+    '_cat=await window.__agLoadMarketplaceCatalog().catch(()=>null),_c=((_cat&&_cat.search&&_cat.search.customizations)||[]).find(x=>x.id===u.id),_pname=(u.id||"").split("/").pop(),_url=(_c&&_c.source&&_c.source.archive&&_c.source.archive.url)||"",_mp=(_c&&_c.marketplace)||"antigravity-plugins-official",_ver=(_c&&_c.version)||"1.0.0",_isNat=!!(_c&&_c._androidNative)||["agy-video-studio","craft-anything","chrome-devtools-plugin","android-cli-plugin","science","github"].includes(_pname);'
+    'if(_isNat&&window.Android&&window.Android.installMarketplacePlugin){try{var _njr=JSON.parse(window.Android.installMarketplacePlugin(_pname,_url,u.id,_mp,_ver));await new Promise(r=>setTimeout(r,350));return of(_ICR,_njr,{ignoreUnknownFields:!0})}catch(_ne){}}'
+    'try{var _ir=await f(v=>v.installCustomization(kc(Vja,{id:u.id,bundleId:u.bundleId})));if(_ir&&_ir.success){try{window.Android&&window.Android.postProcessInstalledPlugin&&window.Android.postProcessInstalledPlugin(_pname)}catch(_pe){}return _ir}}catch(_e){}'
+    'try{if(window.Android&&window.Android.installMarketplacePlugin){var _jr=JSON.parse(window.Android.installMarketplacePlugin(_pname,_url,u.id,_mp,_ver));await new Promise(r=>setTimeout(r,350));return of(_ICR,_jr,{ignoreUnknownFields:!0})}}catch(_e2){return of(_ICR,{success:!1,message:String(_e2)},{ignoreUnknownFields:!0})}'
+    'return of(_ICR,{success:!1,message:"Marketplace install unavailable"},{ignoreUnknownFields:!0})},'
 )
 
-def patch_backup_restore(content):
-    if "BackupRestoreScreen" in content:
-        print("  [OK] BackupRestoreScreen already present")
+
+def patch_offline_access(content):
+    """Fix 1: Allow accessing conversations without internet; do not force redirect to login/onboarding screen."""
+    if "/*__agyOfflineAccessBypass*/" in content:
         return content
 
-    # 1. Update mEb Map to include "Backup and Restore"
+    # 1. In manager routing component: do not treat unauthenticated as fatal when offline
+    old_m_check = 'm=p&&n&&(m==="signedOut"||m==="loginError"||m==="projectPicker"||m==="licensePicker");'
+    new_m_check = (
+        '/*__agyOfflineAccessBypass*/'
+        'var _isOffline=(typeof window!=="undefined"&&window.Android&&window.Android.isNetworkConnected&&!window.Android.isNetworkConnected())||(typeof navigator!=="undefined"&&!navigator.onLine);'
+        'm=!_isOffline&&p&&n&&(m==="signedOut"||m==="loginError"||m==="projectPicker"||m==="licensePicker");'
+    )
+    content = must_replace(content, old_m_check, new_m_check, "offline_bypass_manager_login_redirect")
+
+    # 2. In manager-landing-layout: do not throw to /onboarding when offline
+    old_before_load = 'beforeLoad:({context:c})=>{var d=c.onboardingState;c.hasOnboardingScreens&&d!==2&&(oed(),ied(),UQ({to:"/onboarding",search:iyb,replace:!0,throw:!0}))}'
+    new_before_load = (
+        'beforeLoad:({context:c})=>{var d=c.onboardingState;'
+        'var _isOff=(typeof window!=="undefined"&&window.Android&&window.Android.isNetworkConnected&&!window.Android.isNetworkConnected())||(typeof navigator!=="undefined"&&!navigator.onLine);'
+        '!_isOff&&c.hasOnboardingScreens&&d!==2&&(oed(),ied(),UQ({to:"/onboarding",search:iyb,replace:!0,throw:!0}))}'
+    )
+    content = must_replace(content, old_before_load, new_before_load, "offline_bypass_landing_layout_onboarding")
+
+    # 3. In onDidRequestLoginFlow: bypass login redirection when offline
+    old_login_req = 'var I=g?.onDidRequestLoginFlow?.(()=>{if(!mL(F.current)&&n){k(!0);let J=D.current;l({to:"/onboarding",replace:!0,search:L=>jyb(J,L.project)})}});'
+    new_login_req = (
+        'var I=g?.onDidRequestLoginFlow?.(()=>{'
+        'var _isOff=(typeof window!=="undefined"&&window.Android&&window.Android.isNetworkConnected&&!window.Android.isNetworkConnected())||(typeof navigator!=="undefined"&&!navigator.onLine);'
+        'if(!_isOff&&!mL(F.current)&&n){k(!0);let J=D.current;l({to:"/onboarding",replace:!0,search:L=>jyb(J,L.project)})}'
+        '});'
+    )
+    content = must_replace(content, old_login_req, new_login_req, "offline_bypass_onDidRequestLoginFlow")
+
+    return content
+
+
+def patch_online_banner_fix(content):
+    """Fix 2: Eliminates false-positive 'No internet. Agent features may not work.' banner."""
+    if "/*__agyOnlineBannerFix*/" in content:
+        return content
+
+    # 1. Update $ac hook to consult window.Android.isNetworkConnected()
+    old_ac = 'var $ac=()=>{var [a,b]=(0,E.useState)(!0);(0,E.useEffect)(()=>{var c=()=>{b(()=>navigator.onLine)};c();window.addEventListener("online",c);window.addEventListener("offline",c);return()=>{window.removeEventListener("online",c);window.removeEventListener("offline",c)}},[void 0,void 0]);return{isOnline:a}};'
+    new_ac = (
+        '/*__agyOnlineBannerFix*/'
+        'var $ac=()=>{var [a,b]=(0,E.useState)(!0);(0,E.useEffect)(()=>{var c=()=>{'
+        'var _on=navigator.onLine;'
+        'try{if(window.Android&&typeof window.Android.isNetworkConnected==="function"){_on=window.Android.isNetworkConnected()}}catch(_e){}'
+        '_on||(navigator&&navigator.onLine&&(_on=!0));'
+        'b(()=>_on)'
+        '};c();var _it=setInterval(c,5000);window.addEventListener("online",c);window.addEventListener("offline",c);return()=>{clearInterval(_it);window.removeEventListener("online",c);window.removeEventListener("offline",c)}},[void 0,void 0]);return{isOnline:a}};'
+    )
+    content = must_replace(content, old_ac, new_ac, "ac_is_online_check_native")
+
+    # 2. Update zxd banner component to re-verify connectivity before rendering warning
+    old_zxd = 'var zxd=({isOnline:a})=>a?null:E.createElement("div",{className:"w-full bg-muted px-3 flex-1 flex items-center gap-2"},E.createElement(rx,{name:"warning",className:"h-4 w-4 shrink-0 text-yellow-500"}),E.createElement("span",{className:"text-foreground"},"No internet. Agent features may not work."));'
+    new_zxd = (
+        'var zxd=({isOnline:a})=>{'
+        'var _realOnline=a;'
+        'try{if(!_realOnline&&typeof window!=="undefined"&&window.Android&&typeof window.Android.isNetworkConnected==="function"){_realOnline=window.Android.isNetworkConnected()}}catch(_e){}'
+        'return _realOnline?null:E.createElement("div",{className:"w-full bg-muted px-3 flex-1 flex items-center gap-2"},E.createElement(rx,{name:"warning",className:"h-4 w-4 shrink-0 text-yellow-500"}),E.createElement("span",{className:"text-foreground"},"No internet. Agent features may not work."))};'
+    )
+    content = must_replace(content, old_zxd, new_zxd, "zxd_banner_native_check")
+
+    return content
+
+
+def patch_task_notifications(content):
+    """Fix 3 & Fix 4: Multi-conversation task notifications & mute task completion sound."""
+    if "__agyTaskProgressAlertsInjected_v2" in content:
+        return content
+
+    pattern = r"function G7a\(\)\{.*?\};(?=var H7a=)"
+    if not re.search(pattern, content, re.DOTALL):
+        raise RuntimeError("could not find G7a block in main.js")
+
+    new_g7a = """function G7a(){/*__agyTaskProgressAlertsInjected_v2*/
+var a=new Set,b=new Set,c,d="Antigravity",f={},g,h,k=()=>{},
+_activeTasks=new Set,
+l=(...p)=>{if(h===void 0)return!1;var q=new Set;p=p.filter(u=>!!u);for(var r=p.pop();r!==void 0;r=p.pop()){if(q.has(r)||q.size>=16)continue;q.add(r);if(h(r))return!0;(r=(r=k(r))&&Pl(r))&&p.push(r)}return!1},
+m=p=>{
+var q=new Map,r=[];
+for(let [u,v]of p)p=v,q.set(p,u),r.push(p);
+C7a(a,r,u=>{
+var v=u.summary.workspaces?.[0]?.workspaceFolderAbsoluteUri,
+w=u.step.step?.metadata?.sourceTrajectoryStepInfo?.cascadeId||q.get(u.summary)||u.summary.trajectoryId;
+a:{
+var x=u.step,y=x.step;
+if(y){
+var z=Nf(y).step;
+if(z.case){
+switch(z.case){
+case "runCommand":y=z.value;z="Requesting your permission in Terminal:";y=`Command: ${y.commandLine}`;break;
+case "openBrowserUrl":y=z.value;z="Requesting your permission to open URL:";y=`URL: ${y.url}`;break;
+case "askQuestion":y=z.value;let A=y.questions?.length??0;z=A>1?"The agent has questions for you:":"The agent has a question for you:";y=y.questions?.[0]?.question||(A>1?"Click to respond to the questions.":"Click to respond to the question.");break;
+default:z=y.requestedInteraction?.interaction,(y=z?.case==="permission"?z.value.resource?.target:void 0)?z="Requesting your permission:":(z="Action requires your attention",y="The agent is waiting for your input.")
+}
+v={id:x.stepIndex.toString()+w,title:z,body:y,payload:{cascadeId:w,workspaceUri:v,type:"request_action"}};
+break a
+}
+}
+v=void 0
+}
+x=Pl(u.summary)??void 0;
+if(v&&!l(w,q.get(u.summary),x)){
+try{
+if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"){
+window.Android.postNotification("task_alerts_completion",z||"Antigravity Task Alert",y||"Action requires your attention",w,!1,-1);
+}
+}catch(_){}
+f.actionRequired&&g?.({soundFile:f.actionRequired});
+c?.(v);
+}
+})
+},
+n=p=>{
+for(let [q,r]of p){
+p=q;
+let u=r;
+_activeTasks.delete(p);
+try{
+if(typeof window!=="undefined"&&window.Android&&typeof window.Android.cancelNotification==="function"){
+window.Android.cancelNotification("cascade_prog_"+p,0);
+}
+}catch(_){}
+if(u.latestExecutorTerminationReason===K.ExecutorTerminationReason.USER_CANCELED)continue;
+if(l(p,Pl(u)??void 0))continue;
+let v=u.annotations?.coordinator?WD(u):u.summary;
+try{
+if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"){
+var _cTitle="Antigravity Task Completion",_cBody=v?`Agent finished: ${v}`:("Task completed in "+(u.title||"conversation"));
+window.Android.postNotification("task_alerts_completion",_cTitle,_cBody,p,!1,-1);
+}
+}catch(_){}
+c?.({id:`agent-finished-${p}-${u.stepCount??0}`,title:d,body:v?`Agent finished: ${v}`:"Agent finished",payload:{cascadeId:p,type:"request_action",workspaceUri:void 0}});
+}
+};
+return p=>{
+k=q=>lm(p.getState())[q];
+return q=>r=>{
+if(E7a.match(r)){
+var u=r.payload,v=u.appName;
+let w=u.soundFiles,x=u.playSound,y=u.isConversationInView;
+if(w){w.cascadeDone="";}
+c=u.sendNotification;
+d=F7a(v);
+f=w;
+g=x;
+h=y;
+u=Object.entries(lm(p.getState()));
+D7a(b,u.filter(([,z])=>!$l(z)),[]);
+m(u.filter(([,z])=>!$l(z)||Pl(z)!==null));
+return q(r)
+}
+if(im.match(r)){
+u=q(r);
+if(c){
+v=r.payload;
+let deletes=v.deletes,updates=v.updates.filter(([,w])=>dm(w.source));
+try{
+if(typeof window!=="undefined"&&window.Android){
+for(let [rCid,rSumm] of updates){
+var isRunning = rSumm && !rSumm.killed && !!rSumm.notFullyIdle && rSumm.status!==K.CascadeRunStatus.IDLE && rSumm.status!==1 && (rSumm.status===K.CascadeRunStatus.RUNNING || rSumm.status===K.CascadeRunStatus.BUSY || rSumm.status===2 || rSumm.status===4);
+if(isRunning){
+if(!_activeTasks.has(rCid)){
+_activeTasks.add(rCid);
+window.Android.postNotification("task_progress","Antigravity Task Progress","Running task in "+(rSumm.title||"conversation"),rCid,!0,-1);
+}
+}else{
+_activeTasks.delete(rCid);
+try{window.Android&&window.Android.cancelNotification&&window.Android.cancelNotification("cascade_prog_"+rCid,0);}catch(_){}
+}
+}
+for(let delCid of (deletes||[])){
+_activeTasks.delete(delCid);
+try{window.Android&&window.Android.cancelNotification&&window.Android.cancelNotification("cascade_prog_"+delCid,0);}catch(_){}
+}
+}
+}catch(_){}
+n(D7a(b,updates.filter(([,w])=>!$l(w)),deletes));
+m(updates.filter(([,w])=>!$l(w)||Pl(w)!==null));
+}
+return u
+}
+return q(r)
+}
+}
+};"""
+    content = re.sub(pattern, new_g7a, content, count=1, flags=re.DOTALL)
+
+    # Wrap clearNotifications
+    old_clear = "async clearNotifications(a){this.extensionApi?"
+    new_clear = (
+        'async clearNotifications(a){'
+        'try{if(typeof window!=="undefined"&&window.Android&&typeof window.Android.cancelNotification==="function"){'
+        'window.Android.cancelNotification("cascade_prog_"+a,0);'
+        'window.Android.cancelNotification("cascade_done_"+a,0);'
+        '}}catch(_){}'
+        'this.extensionApi?'
+    )
+    content = must_replace(content, old_clear, new_clear, "clear_notifications_native_wrap")
+
+    # Mute cascadeDone audio sound file in app setup
+    old_sound = 'soundFiles:{cascadeDone:"/antigravityCascadeDone.mp3",actionRequired:"/antigravityActionRequired.mp3",voicePreviews:"/voices"}'
+    new_sound = 'soundFiles:{cascadeDone:"",actionRequired:"/antigravityActionRequired.mp3",voicePreviews:"/voices"}'
+    content = must_replace(content, old_sound, new_sound, "mute_cascadeDone_sound_file")
+
+    return content
+
+
+def patch_lexical_punctuation_cursor_fix(content):
+    """Fix 5: Lexical cursor jumping before punctuation mark on Android."""
+    if "/*__agyPunctuationCursorFixed*/" in content:
+        return content
+
+    # 1. Disable postDeleteSelectionToRestore rollback on selection change
+    old_rollback = (
+        'var m=Ct();if(k.postDeleteSelectionToRestore&&Wt(m)&&m.isCollapsed()){var n=m.anchor,p=k.postDeleteSelectionToRestore.anchor;'
+        'if(n.key===p.key&&n.offset===p.offset+1||n.offset===1&&Jt(p).is(Jt(n).getPreviousSibling()))m=k.postDeleteSelectionToRestore.clone(),Dt(m)}k.postDeleteSelectionToRestore=null;if(Wt(m)){'
+    )
+    new_rollback = (
+        '/*__agyPunctuationCursorFixed*/'
+        'var m=Ct();k.postDeleteSelectionToRestore=null;if(Wt(m)){'
+    )
+    content = must_replace(content, old_rollback, new_rollback, "lexical_disable_punctuation_cursor_rollback")
+
+    # 2. Never store postDeleteSelectionToRestore after Android backward delete
+    old_store = '(vt(d,\ncs,!0),g=Ct(),Sr&&Wt(g)&&g.isCollapsed()&&(f.postDeleteSelectionToRestore=g,setTimeout(()=>f.postDeleteSelectionToRestore=null)))'
+    new_store = '(vt(d,\ncs,!0),g=Ct(),Sr&&Wt(g)&&g.isCollapsed()&&(f.postDeleteSelectionToRestore=null))'
+    content = must_replace(content, old_store, new_store, "lexical_disable_postDeleteSelectionToRestore_save")
+
+    return content
+
+
+def patch_backup_restore(content):
+    """Custom user Backup & Restore screen alongside parent repo backup tools."""
+    if "BackupRestoreScreen" in content:
+        return content
+
+    # 1. Update dPb Map to include "Backup and Restore"
     content = must_replace(
         content,
         '["Provide Feedback","Give Feedback"]',
         '["Provide Feedback","Give Feedback"],["Backup and Restore","Backup and Restore"]',
-        "mEb_backup_restore_label"
+        "dPb_backup_restore_label"
     )
 
-    # 2. Add to mobile settings screen list in zPb
+    # 2. Add to mobile settings screen list in A0b
     content = must_replace(
         content,
         'b=[...c.filter(p=>p!=="Account"),...d,...(b?["Provide Feedback"]:[])];',
         'b=[...c.filter(p=>p!=="Account"),...d,...(b?["Provide Feedback"]:[]),"Backup and Restore"];',
-        "zPb_mobile_settings_list"
+        "A0b_mobile_settings_list"
     )
 
-    # 3. Add to screen resolver in vPb
+    # 3. Add to screen resolver
     content = must_replace(
         content,
-        'case "Provide Feedback":return B.createElement(UKb,null);',
-        'case "Provide Feedback":return B.createElement(UKb,null);case "Backup and Restore":return B.createElement(BackupRestoreScreen,null);',
-        "vPb_screen_resolver"
+        'case "Provide Feedback":return E.createElement(cVb,null);',
+        'case "Provide Feedback":return E.createElement(cVb,null);case "Backup and Restore":return E.createElement(BackupRestoreScreen,null);',
+        "screen_resolver_backup_restore"
     )
 
-    # 4. Add to desktop settings sidebar in YRb
+    # 4. Add to desktop settings sidebar
     content = must_replace(
         content,
-        'B.createElement(qz,{id:F,place:"right"},"Upload Debug Bundle")):void 0})',
-        'B.createElement(qz,{id:F,place:"right"},"Upload Debug Bundle")):void 0}),B.createElement(rV,{text:"Backup and Restore",label:IQ("Backup and Restore"),onClick:()=>{M(ou("Backup and Restore"))},isActive:L&&c==="Backup and Restore"})',
-        "YRb_desktop_settings_sidebar"
+        'onClick:()=>{M(BE("Provide Feedback"))},isActive:N&&c==="Provide Feedback"',
+        'onClick:()=>{M(BE("Provide Feedback"))},isActive:N&&c==="Provide Feedback"}),E.createElement(TX,{text:"Backup and Restore",label:ZU("Backup and Restore"),onClick:()=>{M(BE("Backup and Restore"))},isActive:N&&c==="Backup and Restore"',
+        "desktop_settings_sidebar_backup_restore"
     )
 
-    # 5. Add to desktop settings screen view container in iSb
+    # 5. Add to desktop settings screen view container
     content = must_replace(
         content,
-        'l&&B.createElement("div",{style:{display:c==="Provide Feedback"?"block":"none"}},B.createElement(UKb,null)),',
-        'l&&B.createElement("div",{style:{display:c==="Provide Feedback"?"block":"none"}},B.createElement(UKb,null)),B.createElement("div",{style:{display:c==="Backup and Restore"?"block":"none"}},B.createElement(BackupRestoreScreen,null)),',
-        "iSb_desktop_view_container"
+        'h&&E.createElement("div",{style:{display:b==="Provide Feedback"?"block":"none"}},E.createElement(cVb,null))',
+        'h&&E.createElement("div",{style:{display:b==="Provide Feedback"?"block":"none"}},E.createElement(cVb,null)),E.createElement("div",{style:{display:b==="Backup and Restore"?"block":"none"}},E.createElement(BackupRestoreScreen,null))',
+        "desktop_view_container_backup_restore"
     )
 
-    # 6. Inject BackupRestoreScreen component before var UKb=
+    # 6. Inject BackupRestoreScreen component before cVb
     backup_restore_comp = '''var BackupRestoreScreen=()=>{
-var [status,setStatus]=(0,B.useState)(null);
-var [isProcessing,setIsProcessing]=(0,B.useState)(!1);
-var [projects,setProjects]=(0,B.useState)([]);
-var [selectedProject,setSelectedProject]=(0,B.useState)("all");
-var [skills,setSkills]=(0,B.useState)([]);
-var [selectedSkill,setSelectedSkill]=(0,B.useState)("all");
-var [conversations,setConversations]=(0,B.useState)([]);
-var [selectedConversation,setSelectedConversation]=(0,B.useState)("all");
-var [showRestartPrompt,setShowRestartPrompt]=(0,B.useState)(!1);
-var [restartMessage,setRestartMessage]=(0,B.useState)("");
-(0,B.useEffect)(()=>{
+var [status,setStatus]=(0,E.useState)(null);
+var [isProcessing,setIsProcessing]=(0,E.useState)(!1);
+var [projects,setProjects]=(0,E.useState)([]);
+var [selectedProject,setSelectedProject]=(0,E.useState)("all");
+var [skills,setSkills]=(0,E.useState)([]);
+var [selectedSkill,setSelectedSkill]=(0,E.useState)("all");
+var [conversations,setConversations]=(0,E.useState)([]);
+var [showRestartPrompt,setShowRestartPrompt]=(0,E.useState)(!1);
+var [restartMessage,setRestartMessage]=(0,E.useState)("");
+(0,E.useEffect)(()=>{
 try{
 if(typeof window!=="undefined"&&window.Android&&typeof window.Android.listProjects==="function"){
 var pList=JSON.parse(window.Android.listProjects()||"[]");
@@ -257,7 +436,7 @@ else{setIsProcessing(!1);setStatus({type:"error",message:"Android native bridge 
 };
 var onRestoreConvos=()=>{
 setIsProcessing(!0);
-setStatus({type:"info",message:"Opening file picker to select backup archive..."});
+setStatus({type:"info",message:"Opening file picker to select conversations backup archive..."});
 try{
 if(window.Android&&typeof window.Android.restoreConversations==="function")window.Android.restoreConversations();
 else{setIsProcessing(!1);setStatus({type:"error",message:"Android native bridge unavailable."})}
@@ -265,477 +444,133 @@ else{setIsProcessing(!1);setStatus({type:"error",message:"Android native bridge 
 };
 var onBackupProj=()=>{
 setIsProcessing(!0);
-setStatus({type:"info",message:"Opening file picker to save project ZIP..."});
+setStatus({type:"info",message:"Opening file picker to choose backup location..."});
 try{
-if(window.Android&&typeof window.Android.backupProjects==="function")window.Android.backupProjects(selectedProject);
+if(window.Android&&typeof window.Android.backupProjects==="function")window.Android.backupProjects(selectedProject==="all"?"":selectedProject);
 else{setIsProcessing(!1);setStatus({type:"error",message:"Android native bridge unavailable."})}
 }catch(err){setIsProcessing(!1);setStatus({type:"error",message:err.message||String(err)})}
 };
 var onRestoreProj=()=>{
 setIsProcessing(!0);
-setStatus({type:"info",message:"Opening file picker to select project ZIP..."});
+setStatus({type:"info",message:"Opening file picker to select projects backup archive..."});
 try{
-if(window.Android&&typeof window.Android.restoreProjects==="function")window.Android.restoreProjects(selectedProject!=="all"?selectedProject:"");
+if(window.Android&&typeof window.Android.restoreProjects==="function")window.Android.restoreProjects(selectedProject==="all"?"":selectedProject);
 else{setIsProcessing(!1);setStatus({type:"error",message:"Android native bridge unavailable."})}
 }catch(err){setIsProcessing(!1);setStatus({type:"error",message:err.message||String(err)})}
 };
 var onBackupSkills=()=>{
 setIsProcessing(!0);
-setStatus({type:"info",message:"Opening file picker to save skills ZIP..."});
+setStatus({type:"info",message:"Opening file picker to choose backup location..."});
 try{
-if(window.Android&&typeof window.Android.backupSkills==="function")window.Android.backupSkills(selectedSkill);
+if(window.Android&&typeof window.Android.backupSkills==="function")window.Android.backupSkills(selectedSkill==="all"?"":selectedSkill);
 else{setIsProcessing(!1);setStatus({type:"error",message:"Android native bridge unavailable."})}
 }catch(err){setIsProcessing(!1);setStatus({type:"error",message:err.message||String(err)})}
 };
 var onRestoreSkills=()=>{
 setIsProcessing(!0);
-setStatus({type:"info",message:"Opening file picker to select skills ZIP..."});
+setStatus({type:"info",message:"Opening file picker to select skills backup archive..."});
 try{
-if(window.Android&&typeof window.Android.restoreSkills==="function")window.Android.restoreSkills(selectedSkill!=="all"?selectedSkill:"");
+if(window.Android&&typeof window.Android.restoreSkills==="function")window.Android.restoreSkills(selectedSkill==="all"?"":selectedSkill);
 else{setIsProcessing(!1);setStatus({type:"error",message:"Android native bridge unavailable."})}
 }catch(err){setIsProcessing(!1);setStatus({type:"error",message:err.message||String(err)})}
 };
-return B.createElement(HQ,{title:IQ("Backup and Restore")},
-B.createElement("div",{className:"space-y-6 max-w-2xl pb-8 p-1 relative"},
-showRestartPrompt&&B.createElement("div",{className:"fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in"},
-B.createElement("div",{className:"w-full max-w-sm rounded-2xl border border-border bg-popover p-5 space-y-4 shadow-xl text-popover-foreground"},
-B.createElement("div",{className:"space-y-1.5"},
-B.createElement("h3",{className:"text-base font-semibold m-0 text-foreground"},"Restart Required"),
-B.createElement("p",{className:"text-sm text-muted-foreground m-0 leading-relaxed"},restartMessage||"Restoration completed successfully. Would you like to restart the app now to apply all changes?")),
-B.createElement("div",{className:"flex items-center justify-end gap-2.5 pt-2"},
-B.createElement(sz,{variant:"secondary",size:"md",onClick:()=>setShowRestartPrompt(!1)},"Cancel"),
-B.createElement(sz,{variant:"primary",size:"md",onClick:()=>{
-setShowRestartPrompt(!1);
-try{if(window.Android&&typeof window.Android.restartApp==="function")window.Android.restartApp()}
-catch(_){}
-}},"OK")))),
-status&&B.createElement("div",{className:Gi("p-3 rounded-xl border text-sm flex items-start gap-2.5 transition-all shadow-sm",
-status.success?"bg-emerald-500/10 border-emerald-500/30 text-emerald-300":
-status.type==="info"?"bg-sky-500/10 border-sky-500/30 text-sky-300":
-"bg-red-500/10 border-red-500/30 text-red-300")},
-B.createElement(nq,{name:status.success?"check_circle":status.type==="info"?"info":"error",size:18,className:"shrink-0 mt-0.5"}),
-B.createElement("div",{className:"flex-1"},B.createElement("div",{className:"font-medium"},status.title||(status.success?"Success":status.type==="info"?"Processing":"Notice")),status.message&&B.createElement("div",{className:"text-xs opacity-90 mt-0.5"},status.message)),
-B.createElement("button",{type:"button",onClick:()=>setStatus(null),className:"text-xs opacity-60 hover:opacity-100 p-1 border-none bg-transparent cursor-pointer text-inherit"},"✕")),
-B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3.5 shadow-xs"},
-B.createElement("div",{className:"flex items-center gap-3"},
-B.createElement("div",{className:"p-2.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center"},
-B.createElement(nq,{name:"forum",size:22})),
-B.createElement("div",null,
-B.createElement("h3",{className:"font-semibold text-base text-foreground m-0"},"Conversations & Trajectories"),
-B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 mb-0 leading-relaxed"},
+var onRestartApp=()=>{
+try{
+if(window.Android&&typeof window.Android.restartApp==="function")window.Android.restartApp();
+else window.location.reload();
+}catch(_){window.location.reload()}
+};
+
+return E.createElement("div",{className:"space-y-6 max-w-2xl pb-10"},
+E.createElement("div",{className:"space-y-1.5"},
+E.createElement("h2",{className:"text-xl font-bold tracking-tight text-foreground m-0"},"Test Backup and Restore"),
+E.createElement("p",{className:"text-sm text-muted-foreground m-0"},"Fast native backup and restore for conversations, projects, and skills.")),
+showRestartPrompt&&E.createElement("div",{className:"p-4 rounded-xl border border-primary/30 bg-primary/10 text-primary space-y-3"},
+E.createElement("div",{className:"font-medium text-sm leading-relaxed"},restartMessage),
+E.createElement("div",{className:"flex gap-2"},
+E.createElement("button",{type:"button",onClick:onRestartApp,className:"px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground border-none cursor-pointer hover:opacity-90 transition-opacity"},"Restart App Now"),
+E.createElement("button",{type:"button",onClick:()=>setShowRestartPrompt(!1),className:"px-3 py-1.5 rounded-lg text-xs font-medium bg-background text-foreground border border-border cursor-pointer hover:bg-muted transition-colors"},"Later"))),
+status&&E.createElement("div",{className:"p-3.5 rounded-xl text-sm flex items-start justify-between gap-2.5 transition-all "+(status.type==="error"?"border border-destructive/40 bg-destructive/10 text-destructive":(status.type==="success"||status.success)?"border border-green-500/40 bg-green-500/10 text-green-500":"border border-border bg-sidebar-muted/40 text-muted-foreground")},
+E.createElement("div",{className:"flex-1 leading-snug"},status.message||JSON.stringify(status)),
+E.createElement("button",{type:"button",onClick:()=>setStatus(null),className:"text-xs opacity-60 hover:opacity-100 p-1 border-none bg-transparent cursor-pointer text-inherit"},"✕")),
+E.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3.5 shadow-xs"},
+E.createElement("div",{className:"flex items-center gap-3"},
+E.createElement("div",{className:"p-2.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center"},
+E.createElement(rx,{name:"forum",size:22})),
+E.createElement("div",null,
+E.createElement("h3",{className:"font-semibold text-base text-foreground m-0"},"Conversations & Trajectories"),
+E.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 mb-0 leading-relaxed"},
 "Fast, compressed archive of conversation history, transcripts, and brain artifacts (.zip). Space-saving and complete."))),
-B.createElement("div",{className:"flex flex-wrap gap-2.5 pt-1"},
-B.createElement(sz,{variant:"primary",size:"md",disabled:isProcessing,onClick:onBackupConvos,className:"flex items-center gap-1.5"},
-B.createElement(nq,{name:"upload",size:16}),"Backup Conversations"),
-B.createElement(sz,{variant:"secondary",size:"md",disabled:isProcessing,onClick:onRestoreConvos,className:"flex items-center gap-1.5"},
-B.createElement(nq,{name:"download",size:16}),"Restore Conversations"))),
-B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3.5 shadow-xs"},
-B.createElement("div",{className:"flex items-center gap-3"},
-B.createElement("div",{className:"p-2.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center"},
-B.createElement(nq,{name:"folder_zip",size:22})),
-B.createElement("div",null,
-B.createElement("h3",{className:"font-semibold text-base text-foreground m-0"},"Project Files"),
-B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 mb-0 leading-relaxed"},
+E.createElement("div",{className:"flex flex-wrap gap-2.5 pt-1"},
+E.createElement("button",{type:"button",disabled:isProcessing,onClick:onBackupConvos,className:"px-3.5 py-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground border-none cursor-pointer flex items-center gap-1.5 shadow-xs hover:opacity-90 disabled:opacity-50"},
+E.createElement(rx,{name:"upload",size:16}),"Backup Conversations"),
+E.createElement("button",{type:"button",disabled:isProcessing,onClick:onRestoreConvos,className:"px-3.5 py-2 rounded-xl text-xs font-semibold bg-secondary text-secondary-foreground border border-border cursor-pointer flex items-center gap-1.5 hover:bg-muted disabled:opacity-50"},
+E.createElement(rx,{name:"download",size:16}),"Restore Conversations"))),
+E.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3.5 shadow-xs"},
+E.createElement("div",{className:"flex items-center gap-3"},
+E.createElement("div",{className:"p-2.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center"},
+E.createElement(rx,{name:"folder_zip",size:22})),
+E.createElement("div",null,
+E.createElement("h3",{className:"font-semibold text-base text-foreground m-0"},"Project Files"),
+E.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 mb-0 leading-relaxed"},
 "Backup and restore workspace projects as standard ZIP archives."))),
-B.createElement("div",{className:"space-y-1.5 pt-1"},
-B.createElement("label",{className:"block text-xs font-medium text-muted-foreground"},"Target Project Scope:"),
-B.createElement("select",{value:selectedProject,onChange:e=>setSelectedProject(e.target.value),className:"w-full p-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"},
-B.createElement("option",{value:"all"},"All Scratch Projects (Complete Workspace)"),
-projects.map(p=>B.createElement("option",{key:p,value:p},"Project: "+p)))),
-B.createElement("div",{className:"flex flex-wrap gap-2.5 pt-1"},
-B.createElement(sz,{variant:"primary",size:"md",disabled:isProcessing,onClick:onBackupProj,className:"flex items-center gap-1.5"},
-B.createElement(nq,{name:"upload",size:16}),"Backup Projects (.zip)"),
-B.createElement(sz,{variant:"secondary",size:"md",disabled:isProcessing,onClick:onRestoreProj,className:"flex items-center gap-1.5"},
-B.createElement(nq,{name:"download",size:16}),"Restore Projects (.zip)"))),
-B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3.5 shadow-xs"},
-B.createElement("div",{className:"flex items-center gap-3"},
-B.createElement("div",{className:"p-2.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center"},
-B.createElement(nq,{name:"psychology",size:22})),
-B.createElement("div",null,
-B.createElement("h3",{className:"font-semibold text-base text-foreground m-0"},"Skills & Runbooks"),
-B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 mb-0 leading-relaxed"},
+E.createElement("div",{className:"space-y-1.5 pt-1"},
+E.createElement("label",{className:"block text-xs font-medium text-muted-foreground"},"Target Project Scope:"),
+E.createElement("select",{value:selectedProject,onChange:e=>setSelectedProject(e.target.value),className:"w-full p-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"},
+E.createElement("option",{value:"all"},"All Scratch Projects (Complete Workspace)"),
+projects.map(p=>E.createElement("option",{key:p,value:p},"Project: "+p)))),
+E.createElement("div",{className:"flex flex-wrap gap-2.5 pt-1"},
+E.createElement("button",{type:"button",disabled:isProcessing,onClick:onBackupProj,className:"px-3.5 py-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground border-none cursor-pointer flex items-center gap-1.5 shadow-xs hover:opacity-90 disabled:opacity-50"},
+E.createElement(rx,{name:"upload",size:16}),"Backup Projects (.zip)"),
+E.createElement("button",{type:"button",disabled:isProcessing,onClick:onRestoreProj,className:"px-3.5 py-2 rounded-xl text-xs font-semibold bg-secondary text-secondary-foreground border border-border cursor-pointer flex items-center gap-1.5 hover:bg-muted disabled:opacity-50"},
+E.createElement(rx,{name:"download",size:16}),"Restore Projects (.zip)"))),
+E.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3.5 shadow-xs"},
+E.createElement("div",{className:"flex items-center gap-3"},
+E.createElement("div",{className:"p-2.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center"},
+E.createElement(rx,{name:"psychology",size:22})),
+E.createElement("div",null,
+E.createElement("h3",{className:"font-semibold text-base text-foreground m-0"},"Skills & Runbooks"),
+E.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 mb-0 leading-relaxed"},
 "Backup and restore custom agent skills, tools, and procedural runbooks as standard ZIP archives."))),
-B.createElement("div",{className:"space-y-1.5 pt-1"},
-B.createElement("label",{className:"block text-xs font-medium text-muted-foreground"},"Target Skill Scope:"),
-B.createElement("select",{value:selectedSkill,onChange:e=>setSelectedSkill(e.target.value),className:"w-full p-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"},
-B.createElement("option",{value:"all"},"All Skills (Complete Library)"),
-skills.map(s=>B.createElement("option",{key:s,value:s},"Skill: "+s)))),
-B.createElement("div",{className:"flex flex-wrap gap-2.5 pt-1"},
-B.createElement(sz,{variant:"primary",size:"md",disabled:isProcessing,onClick:onBackupSkills,className:"flex items-center gap-1.5"},
-B.createElement(nq,{name:"upload",size:16}),"Backup Skills (.zip)"),
-B.createElement(sz,{variant:"secondary",size:"md",disabled:isProcessing,onClick:onRestoreSkills,className:"flex items-center gap-1.5"},
-B.createElement(nq,{name:"download",size:16}),"Restore Skills (.zip)")))
-));
+E.createElement("div",{className:"space-y-1.5 pt-1"},
+E.createElement("label",{className:"block text-xs font-medium text-muted-foreground"},"Target Skill Scope:"),
+E.createElement("select",{value:selectedSkill,onChange:e=>setSelectedSkill(e.target.value),className:"w-full p-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"},
+E.createElement("option",{value:"all"},"All Skills (Complete Library)"),
+skills.map(s=>E.createElement("option",{key:s,value:s},"Skill: "+s)))),
+E.createElement("div",{className:"flex flex-wrap gap-2.5 pt-1"},
+E.createElement("button",{type:"button",disabled:isProcessing,onClick:onBackupSkills,className:"px-3.5 py-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground border-none cursor-pointer flex items-center gap-1.5 shadow-xs hover:opacity-90 disabled:opacity-50"},
+E.createElement(rx,{name:"upload",size:16}),"Backup Skills (.zip)"),
+E.createElement("button",{type:"button",disabled:isProcessing,onClick:onRestoreSkills,className:"px-3.5 py-2 rounded-xl text-xs font-semibold bg-secondary text-secondary-foreground border border-border cursor-pointer flex items-center gap-1.5 hover:bg-muted disabled:opacity-50"},
+E.createElement(rx,{name:"download",size:16}),"Restore Skills (.zip)")))
+);
 };
 '''
-    content = must_replace(content, 'var UKb=', backup_restore_comp + 'var UKb=', "UKb_inject_BackupRestoreScreen")
-    return content
-
-def patch_terminal_touch_scroll(content):
-    if 'data-testid=\\"terminal-surface\\"' in content or 'data-testid="terminal-surface"' in content:
-        print("  [OK] terminal swipe-ignore already present")
-        return content
-
-    content = must_replace(
-        content,
-        'function ehb(a){return!!a?.closest("[data-base-ui-swipe-ignore]")}',
-        'function ehb(a){return!!a?.closest("[data-base-ui-swipe-ignore],.xterm,[data-testid=\\"terminal-surface\\"],[data-testid=\\"terminal-view\\"],.terminal,.xterm-scrollable-element")}',
-        "ehb_terminal_swipe_ignore"
-    )
-
-    content = must_replace(
-        content,
-        '!va||!va.closest(\'button,a,input,textarea,[role="button"],[data-base-ui-swipe-ignore],[data-swipe-ignore]\')',
-        '!va||!va.closest(\'button,a,input,textarea,[role="button"],[data-base-ui-swipe-ignore],[data-swipe-ignore],.xterm,[data-testid="terminal-surface"]\')',
-        "secondary_drawer_terminal_swipe_ignore"
-    )
-    return content
-
-
-
-def patch_conversation_search_jump(content):
-    if "__agPendingConvoJump" in content and "stepIndex:I.matchedStepIndex" in content:
-        return content
-
-    content = must_replace(
-        content,
-        'function Atc(a,b){var c=ytc(a.snippetMatchRanges),{snippet:d,matches:f}=ztc(a.snippet,c);(c=d.trim().replace(/^\\.\\.\\.|\\.\\.\\.$/g,"").trim())&&a.title.trim().toLowerCase().includes(c)&&(d="",f=void 0);return{type:"basic",item:{id:a.cascadeId,label:a.title||"Untitled Conversation"',
-        'function Atc(a,b){var c=ytc(a.snippetMatchRanges),{snippet:d,matches:f}=ztc(a.snippet,c);(c=d.trim().replace(/^\\.\\.\\.|\\.\\.\\.$/g,"").trim())&&a.title.trim().toLowerCase().includes(c)&&(d="",f=void 0);return{type:"basic",item:{id:a.cascadeId,matchedStepIndex:a.matchedStepIndex,snippet:a.snippet,queryMatches:a.snippetMatchRanges,label:a.title||"Untitled Conversation"',
-        "Atc_item_metadata",
-    )
-
-    content = must_replace(
-        content,
-        'z.conversations.map(I=>({item:Atc(I,m).item,onSelect:()=>{h(I.cascadeId)}}))',
-        'z.conversations.map(I=>({item:Atc(I,m).item,onSelect:()=>{window.__agPendingConvoJump={cascadeId:I.cascadeId,stepIndex:I.matchedStepIndex,snippet:I.snippet,query:(z.query||a||"").trim(),time:Date.now()};typeof window.__agTriggerPendingJump==="function"&&window.__agTriggerPendingJump();h(I.cascadeId)}}))',
-        "Rtc_unified_convo_search_select_jump",
-    )
-
-    content = must_replace(
-        content,
-        'p.filter(({item:I})=>qZ(I.label,z.query)).map(({item:I})=>({item:I,onSelect:()=>{h(I.id)}}))',
-        'p.filter(({item:I})=>qZ(I.label,z.query)).map(({item:I})=>({item:I,onSelect:()=>{window.__agPendingConvoJump={cascadeId:I.id,stepIndex:void 0,snippet:"",query:(z.query||a||"").trim(),time:Date.now()};typeof window.__agTriggerPendingJump==="function"&&window.__agTriggerPendingJump();h(I.id)}}))',
-        "Rtc_fallback_convo_search_select_jump",
-    )
-
-    if 'selectOrClose:X=>{V(X);if(X){if(X.matchedStepIndex!==void 0||X.snippet||b)' in content:
-        content = must_replace(
-            content,
-            'selectOrClose:X=>{V(X);if(X){if(X.matchedStepIndex!==void 0||X.snippet||b){window.__agPendingConvoJump={cascadeId:X.id,stepIndex:X.matchedStepIndex,snippet:X.snippet,query:(b||"").trim(),time:Date.now()};typeof window.__agTriggerPendingJump==="function"&&window.__agTriggerPendingJump()}f(X.id)}d()}',
-            'selectOrClose:X=>{V(X);if(X){var _match=(typeof O!=="undefined"&&Array.isArray(O))?O.find(x=>x.cascadeId===X.id):null;window.__agPendingConvoJump={cascadeId:X.id,stepIndex:_match?_match.matchedStepIndex:void 0,snippet:_match?_match.snippet:"",query:(b||"").trim(),time:Date.now()};typeof window.__agTriggerPendingJump==="function"&&window.__agTriggerPendingJump();f(X.id)}d()}',
-            "Ttc_conversations_palette_select_jump",
-        )
-    elif 'selectOrClose:X=>{V(X);X&&f(X.id);d()}' in content:
-        content = must_replace(
-            content,
-            'selectOrClose:X=>{V(X);X&&f(X.id);d()}',
-            'selectOrClose:X=>{V(X);if(X){var _match=(typeof O!=="undefined"&&Array.isArray(O))?O.find(x=>x.cascadeId===X.id):null;window.__agPendingConvoJump={cascadeId:X.id,stepIndex:_match?_match.matchedStepIndex:void 0,snippet:_match?_match.snippet:"",query:(b||"").trim(),time:Date.now()};typeof window.__agTriggerPendingJump==="function"&&window.__agTriggerPendingJump();f(X.id)}d()}',
-            "Ttc_conversations_palette_select_jump",
-        )
-
-    content = must_replace(
-        content,
-        'var yic=({userStep:a,userStepIndex:b,sendError:c})=>{var d=PX();return B.createElement("div",{className:"flex w-full flex-row"},',
-        'var yic=({userStep:a,userStepIndex:b,sendError:c})=>{var d=PX();return B.createElement("div",{className:"flex w-full flex-row","data-step-index":b},',
-        "yic_user_step_index_attr",
-    )
-
-    return content
-
-def patch_contextual_search_icon(content):
-    if 'data-testid="sidebar-search-button"' in content and "Find in Conversation" in content:
-        return content
-
-    content = must_replace(
-        content,
-        'B.createElement(yV,{iconName:"search",onClick:()=>{ha(wg.CONVERSATION_PICKER_OPEN,"sidebar_search_button");\nP?.executeCommand("openConvoPicker")},"aria-label":"Search Conversations",dataTooltipId:oa,dataTestId:"sidebar-search-button"})',
-        'B.createElement(yV,{iconName:"search",onClick:()=>{var _drw=!!document.querySelector(\'[data-testid="sidebar-toggle"][aria-expanded="true"]\');if(fa&&!_drw){P?.executeCommand("conversationView.findInConversation");setTimeout(()=>{var inp=document.querySelector(\'input[placeholder="Find"]\')||document.querySelector(\'[data-testid="find-input"]\')||document.querySelector(".sticky input");if(inp){inp.focus();inp.select()}else{var cv=document.querySelector(\'[data-testid="conversation-view"]\')||document.body;cv.dispatchEvent(new KeyboardEvent("keydown",{key:"f",code:"KeyF",ctrlKey:!0,bubbles:!0}))}},50)}else{ha(wg.CONVERSATION_PICKER_OPEN,"sidebar_search_button");P?.executeCommand("openConvoPicker")}},"aria-label":(fa&&!document.querySelector(\'[data-testid="sidebar-toggle"][aria-expanded="true"]\'))?"Find in Conversation":"Search Conversations",dataTooltipId:oa,dataTestId:"sidebar-search-button"})',
-        "main_titlebar_contextual_search",
-    )
-
-    content = must_replace(
-        content,
-        'd&&B.createElement(B.Fragment,null,B.createElement(yV,{iconName:"search",onClick:()=>{h(wg.CONVERSATION_PICKER_OPEN,"sidebar_search_button");g?.executeCommand("openConvoPicker")},"aria-label":"Search Conversations",dataTooltipId:k,dataTestId:"sidebar-search-button"})',
-        'd&&B.createElement(B.Fragment,null,B.createElement(yV,{iconName:"search",onClick:()=>{var _drw=!!document.querySelector(\'[data-testid="sidebar-toggle"][aria-expanded="true"]\');if(a&&!_drw){g?.executeCommand("conversationView.findInConversation");setTimeout(()=>{var inp=document.querySelector(\'input[placeholder="Find"]\')||document.querySelector(\'[data-testid="find-input"]\')||document.querySelector(".sticky input");if(inp){inp.focus();inp.select()}else{var cv=document.querySelector(\'[data-testid="conversation-view"]\')||document.body;cv.dispatchEvent(new KeyboardEvent("keydown",{key:"f",code:"KeyF",ctrlKey:!0,bubbles:!0}))}},50)}else{h(wg.CONVERSATION_PICKER_OPEN,"sidebar_search_button");g?.executeCommand("openConvoPicker")}},"aria-label":(a&&!document.querySelector(\'[data-testid="sidebar-toggle"][aria-expanded="true"]\'))?"Find in Conversation":"Search Conversations",dataTooltipId:k,dataTestId:"sidebar-search-button"})',
-        "tXc_contextual_search",
-    )
-
-    content = must_replace(
-        content,
-        'b&&h&&B.createElement(yV,{iconName:"search",onClick:()=>{k(wg.CONVERSATION_PICKER_OPEN,"sidebar_search_button");h.executeCommand("openConvoPicker")},"aria-label":"Search Conversations",dataTestId:"mobile-search-conversations",size:"icon-touch"})',
-        'h&&B.createElement(yV,{iconName:"search",onClick:()=>{var _drw=!!document.querySelector(\'[data-testid="sidebar-toggle"][aria-expanded="true"]\');if(!b&&!_drw){h.executeCommand("conversationView.findInConversation");setTimeout(()=>{var inp=document.querySelector(\'input[placeholder="Find"]\')||document.querySelector(\'[data-testid="find-input"]\');if(inp){inp.focus();inp.select()}else{var cv=document.querySelector(\'[data-testid="conversation-view"]\')||document.body;cv.dispatchEvent(new KeyboardEvent("keydown",{key:"f",code:"KeyF",ctrlKey:!0,bubbles:!0}))}},50)}else{k(wg.CONVERSATION_PICKER_OPEN,"sidebar_search_button");h.executeCommand("openConvoPicker")}},"aria-label":(!b&&!document.querySelector(\'[data-testid="sidebar-toggle"][aria-expanded="true"]\'))?"Find in Conversation":"Search Conversations",dataTestId:"mobile-search-conversations",size:"icon-touch"})',
-        "WZc_mobile_contextual_search",
-    )
-
-    return content
-
-def patch_convo_switcher(content):
-    if "window.__agyOpenConversation=" in content:
-        return content
-
-    # 1. Hook b$b to expose window.__agySwitchConversation and flush pending cascade ID
-    old_bbb = "var b$b=()=>{var a=Al(),b=N_();(0,B.useEffect)(()=>{a?.rpc"
-    new_bbb = (
-        'var b$b=()=>{var a=Al(),b=N_();(0,B.useEffect)(()=>{'
-        'try{'
-        'window.__agySwitchConversation=b;'
-        'if(window.__agyPendingCascadeId){'
-        'var _p=window.__agyPendingCascadeId;'
-        'window.__agyPendingCascadeId=null;'
-        'setTimeout(()=>{b(_p);typeof rad==="function"&&rad(_p)},100);'
-        '}'
-        '}catch(_){}'
-        'a?.rpc'
-    )
-    content = must_replace(content, old_bbb, new_bbb, "bbb_expose_switch_conversation")
-
-    # 2. Hook rad and define window.__agyOpenConversation
-    old_rad = 'function rad(a){r7&&r7.navigate({to:"/c/$cascadeId",params:{cascadeId:a}})}'
-    new_rad = (
-        'function rad(a){if(r7){r7.navigate({to:"/c/$cascadeId",params:{cascadeId:a}})}}'
-        'window.__agyOpenConversation=function(a){if(!a)return;var c=String(a).trim();'
-        'try{if(typeof window.__agySwitchConversation==="function"){window.__agySwitchConversation(c);}}catch(_){}'
-        'try{if(r7){r7.navigate({to:"/c/$cascadeId",params:{cascadeId:c}});}else{window.__agyPendingCascadeId=c;}}catch(_){window.__agyPendingCascadeId=c;}};'
-    )
-    content = must_replace(content, old_rad, new_rad, "rad_open_conversation_global")
-
-    # 3. Hook router creation in zad to flush pending cascade ID and start on initial cascade
-    old_zad_router = 'r7=n=new $jb({routeTree:nad,history:p,InnerWrap:h,context:W$c,basepath:n.basepath,parseSearch:pad,stringifySearch:qad})'
-    new_zad_router = (
-        'r7=n=new $jb({routeTree:nad,history:p,InnerWrap:h,context:W$c,basepath:n.basepath,parseSearch:pad,stringifySearch:qad});'
-        'try{if(window.__agyPendingCascadeId){'
-        'var _pendCid=window.__agyPendingCascadeId;'
-        'window.__agyPendingCascadeId=null;'
-        'setTimeout(()=>{window.__agyOpenConversation(_pendCid)},50);'
-        '}}catch(_){}'
-    )
-    if old_zad_router in content:
-        content = must_replace(content, old_zad_router, new_zad_router, "zad_flush_pending_cascade_on_router_init")
-
-    old_mem_router = 'case "memory":p=Hhb({initialEntries:[n.historyType.initialPath??"/"]});break b;'
-    new_mem_router = 'case "memory":p=Hhb({initialEntries:[((typeof window!=="undefined"&&window.__agyPendingCascadeId)?("/c/"+window.__agyPendingCascadeId):(n.historyType.initialPath??"/"))]});break b;'
-    if old_mem_router in content:
-        content = must_replace(content, old_mem_router, new_mem_router, "zad_initial_memory_path_cascade")
-
-    return content
-
-def patch_conversation_search_all(content):
-    if "window.Android.searchAllConversations" in content:
-        return content
-
-    # 1. In Ctc: replace language server search with Android native ConversationSearchHelper
-    old_ctc_call = 'let O=P(await N(d({query:b,limit:G,...(F?{filters:{archivedOnly:!0}}:{}),signal:K.signal})));'
-    new_ctc_call = (
-        'let O;'
-        'try{'
-        'if(typeof window!=="undefined"&&window.Android&&typeof window.Android.searchAllConversations==="function"){'
-        'var _raw=window.Android.searchAllConversations(b),_parsed=JSON.parse(_raw||"[]");'
-        'O={results:_parsed,indexStale:!1,diskFull:!1}'
-        '}else{'
-        'O=P(await N(d({query:b,limit:G,...(F?{filters:{archivedOnly:!0}}:{}),signal:K.signal})))'
-        '}'
-        '}catch(_se){'
-        'O=P(await N(d({query:b,limit:G,...(F?{filters:{archivedOnly:!0}}:{}),signal:K.signal})))'
-        '}'
-    )
-    content = must_replace(content, old_ctc_call, new_ctc_call, "ctc_search_all_conversations")
-
-    # 2. In Ttc: enable conversation search V2 unconditionally
-    old_c_flag = 'D=b.trim().length>0,C=oj().get("conversationSearchV2")?.enabled??!1,F=q||m.includes("scheduled")'
-    new_c_flag = 'D=b.trim().length>0,C=!0,F=q||m.includes("scheduled")'
-    content = must_replace(content, old_c_flag, new_c_flag, "ttc_enable_convo_search_v2")
-
-    # 3. In Ttc: increase result slice from 50 to 250
-    old_slice = 'u.has(X.cascadeId)).slice(0,50),[m,x,u,G,h.summaries,y,g])'
-    new_slice = 'u.has(X.cascadeId)).slice(0,250),[m,x,u,G,h.summaries,y,g])'
-    content = must_replace(content, old_slice, new_slice, "ttc_slice_250")
-
-    # 4. In Ttc: selectOrClose jump to conversation and step
-    old_select_close = 'selectOrClose:X=>{V(X);if(X){var _match=(typeof O!=="undefined"&&Array.isArray(O))?O.find(x=>x.cascadeId===X.id):null;window.__agPendingConvoJump={cascadeId:X.id,stepIndex:_match?_match.matchedStepIndex:void 0,snippet:_match?_match.snippet:"",query:(b||"").trim(),time:Date.now()};typeof window.__agTriggerPendingJump==="function"&&window.__agTriggerPendingJump();f(X.id)}d()}'
-    new_select_close = (
-        'selectOrClose:X=>{V(X);if(X){'
-        'var _cid=(X.cascadeId||X.id||"").split(":")[0];'
-        'var _step=X.matchedStepIndex!==void 0?X.matchedStepIndex:((typeof O!=="undefined"&&Array.isArray(O))?O.find(x=>x.cascadeId===_cid)?.matchedStepIndex:void 0);'
-        'var _snip=X.snippet||((typeof O!=="undefined"&&Array.isArray(O))?O.find(x=>x.cascadeId===_cid)?.snippet:"");'
-        'window.__agPendingConvoJump={cascadeId:_cid,stepIndex:_step,snippet:_snip,query:(b||"").trim(),time:Date.now()};'
-        'typeof window.__agTriggerPendingJump==="function"&&window.__agTriggerPendingJump();'
-        'f(_cid)}d()}'
-    )
-    content = must_replace(content, old_select_close, new_select_close, "ttc_selectOrClose_jump")
-
-    # 5. In Atc: unique ID per match occurrence, format label with step index, snippet and match highlighting
-    old_atc = r'function Atc(a,b){var c=ytc(a.snippetMatchRanges),{snippet:d,matches:f}=ztc(a.snippet,c);(c=d.trim().replace(/^\.\.\.|\.\.\.$/g,"").trim())&&a.title.trim().toLowerCase().includes(c)&&(d="",f=void 0);return{type:"basic",item:{id:a.cascadeId,matchedStepIndex:a.matchedStepIndex,snippet:a.snippet,queryMatches:a.snippetMatchRanges,label:a.title||"Untitled Conversation",'
-    new_atc = (
-        r'function Atc(a,b){var c=ytc(a.snippetMatchRanges),{snippet:d,matches:f}=ztc(a.snippet,c);'
-        r'(c=d.trim().replace(/^\.\.\.|\.\.\.$/g,"").trim())&&a.title&&a.title.trim().toLowerCase().includes(c)&&a.matchedStepIndex===void 0&&(d="",f=void 0);'
-        'var _stepSuffix=a.matchedStepIndex!==void 0?" \\u00b7 Step "+a.matchedStepIndex:"",'
-        '_lbl=(a.title||"Untitled Conversation")+_stepSuffix,'
-        '_uid=a.uniqueId||(a.cascadeId+":"+(a.matchedStepIndex!==void 0?a.matchedStepIndex:"0")+":"+(a.startOffset||0));'
-        'return{type:"basic",item:{id:_uid,cascadeId:a.cascadeId,matchedStepIndex:a.matchedStepIndex,snippet:a.snippet,queryMatches:a.snippetMatchRanges,label:_lbl,'
-    )
-    content = must_replace(content, old_atc, new_atc, "atc_unique_item_and_step_label")
-
-    # 6. In mhc: add data-step-index to agent turn items
-    old_mhc = 'const mhc=({step:a,debugMode:b})=>{var {verboseAgentChat:c,getStepRendererConfig:d}=EA();return d(a).isRendered(a,b,c)?B.createElement("div",{className:"flex flex-row"},'
-    new_mhc = 'const mhc=({step:a,debugMode:b})=>{var {verboseAgentChat:c,getStepRendererConfig:d}=EA();return d(a).isRendered(a,b,c)?B.createElement("div",{className:"flex flex-row","data-step-index":zV(a.metadata)},'
-    content = must_replace(content, old_mhc, new_mhc, "mhc_data_step_index")
-
-    return content
-
-
-def patch_task_notifications(content):
-    if "__agyTaskProgressAlertsInjected_v2" in content:
-        return content
-
-    import re
-    pattern = r"function xQa\(\)\{.*?\};(?=var yQa=Uj)"
-    if not re.search(pattern, content, re.DOTALL):
-        raise RuntimeError("could not find xQa block in main.js")
-
-    new_xqa = """function xQa(){/*__agyTaskProgressAlertsInjected_v2*/
-var a=new Set,b=new Set,c,d="Antigravity",f={},g,
-_activeTasks=new Set,
-h=l=>{
-var m=new Map,n=[];
-for(let [p,q]of l)l=q,m.set(l,p),n.push(l);
-tQa(a,n,p=>{
-var q=p.summary.workspaces?.[0]?.workspaceFolderAbsoluteUri,
-t=p.step.step?.metadata?.sourceTrajectoryStepInfo?.cascadeId||m.get(p.summary)||p.summary.trajectoryId;
-a:{
-p=p.step;
-var u=p.step;
-if(u){
-var v=Ef(u).step;
-if(v.case){
-switch(v.case){
-case "runCommand":u=v.value;v="Requesting your permission in Terminal:";u=`Command: ${u.commandLine}`;break;
-case "openBrowserUrl":u=v.value;v="Requesting your permission to open URL:";u=`URL: ${u.url}`;break;
-case "askQuestion":u=v.value;let w=u.questions?.length??0;v=w>1?"The agent has questions for you:":"The agent has a question for you:";u=u.questions?.[0]?.question||(w>1?"Click to respond to the questions.":"Click to respond to the question.");break;
-default:v=u.requestedInteraction?.interaction,(u=v?.case==="permission"?v.value.resource?.target:void 0)?v="Requesting your permission:":(v="Action requires your attention",u="The agent is waiting for your input.")
-}
-q={id:p.stepIndex.toString()+t,title:v,body:u,payload:{cascadeId:t,workspaceUri:q,type:"request_action"}};
-break a
-}
-}
-q=void 0
-}
-if(q){
-try{
-if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"){
-window.Android.postNotification("task_alerts_completion",v||"Antigravity Task Alert",u||"Action requires your attention",t,!1,-1);
-}
-}catch(_){}
-f.actionRequired&&g?.({soundFile:f.actionRequired});
-c?.(q);
-}
-})
-},
-k=l=>{
-for(let [m,n]of l){
-l=m;
-let p=n;
-_activeTasks.delete(l);
-try{
-if(typeof window!=="undefined"&&window.Android&&typeof window.Android.cancelNotification==="function"){
-window.Android.cancelNotification("cascade_prog_"+l,0);
-}
-}catch(_){}
-if(p.latestExecutorTerminationReason!==J.ExecutorTerminationReason.USER_CANCELED){
-try{
-if(typeof window!=="undefined"&&window.Android&&typeof window.Android.postNotification==="function"){
-var _cTitle="Antigravity Task Completion",_cBody=p.summary?`Agent finished: ${p.summary}`:("Task completed in "+(p.title||"conversation"));
-window.Android.postNotification("task_alerts_completion",_cTitle,_cBody,l,!1,-1);
-}
-}catch(_){}
-f.cascadeDone&&g?.({soundFile:f.cascadeDone});
-c?.({id:`agent-finished-${l}-${p.stepCount??0}`,title:d,body:p.summary?`Agent finished: ${p.summary}`:"Agent finished",payload:{cascadeId:l,type:"request_action",workspaceUri:void 0}});
-}
-}
-};
-return l=>m=>n=>{
-if(vQa.match(n)){
-var p=n.payload,q=p.appName;
-let t=p.soundFiles,u=p.playSound;
-c=p.sendNotification;
-d=wQa(q);
-f=t;
-g=u;
-p=pl(l.getState());
-p=Object.entries(p).filter(([,v])=>!v.trajectoryMetadata?.sourceMetadata?.hideFromConversationList);
-uQa(b,p,[]);
-h(p);
-try{
-if(typeof window!=="undefined"&&window.Android&&typeof window.Android.cancelAllProgressNotifications==="function"){
-window.Android.cancelAllProgressNotifications();
-}
-}catch(_){}
-return m(n)
-}
-if(ml.match(n)){
-p=m(n);
-q=n.payload;
-n=q.deletes;
-q=q.updates.filter(([,t])=>il(t.source)&&!t.trajectoryMetadata?.sourceMetadata?.hideFromConversationList);
-try{
-if(typeof window!=="undefined"&&window.Android){
-for(let [rCid,rSumm] of q){
-var isRunning = rSumm && !rSumm.killed && !!rSumm.notFullyIdle && rSumm.status!==J.CascadeRunStatus.IDLE && rSumm.status!==1 && (rSumm.status===J.CascadeRunStatus.RUNNING || rSumm.status===J.CascadeRunStatus.BUSY || rSumm.status===2 || rSumm.status===4);
-if(isRunning){
-if(!_activeTasks.has(rCid)){
-_activeTasks.add(rCid);
-window.Android.postNotification("task_progress","Antigravity Task Progress","Running task in "+(rSumm.title||"conversation"),rCid,!0,-1);
-}
-}else{
-_activeTasks.delete(rCid);
-try{window.Android&&window.Android.cancelNotification&&window.Android.cancelNotification("cascade_prog_"+rCid,0);}catch(_){}
-}
-}
-for(let delCid of (n||[])){
-_activeTasks.delete(delCid);
-try{window.Android&&window.Android.cancelNotification&&window.Android.cancelNotification("cascade_prog_"+delCid,0);}catch(_){}
-}
-}
-}catch(_){}
-k(uQa(b,q,n));
-h(q);
-return p
-}
-return m(n)
-}
-};"""
-    content = re.sub(pattern, new_xqa, content, count=1, flags=re.DOTALL)
-
-    if "clearNotifications(a){try{" not in content:
-        old_clear = "async clearNotifications(a){if(!this.extensionApi)"
-        new_clear = (
-            'async clearNotifications(a){'
-            'try{if(typeof window!=="undefined"&&window.Android&&typeof window.Android.cancelNotification==="function"){'
-            'window.Android.cancelNotification("cascade_prog_"+a,0);'
-            'window.Android.cancelNotification("cascade_done_"+a,0);'
-            '}}catch(_){}'
-            'if(!this.extensionApi)'
-        )
-        content = must_replace(content, old_clear, new_clear, "lpd_clear_notifications_native")
-
+    content = must_replace(content, 'var cVb=E.memo(function(){', backup_restore_comp + 'var cVb=E.memo(function(){', "cVb_inject_BackupRestoreScreen")
     return content
 
 
 def patch_notification_settings_clean(content):
+    """Notification Settings screen for Android native notification channels."""
     if "NotificationSettingsScreen" in content:
         return content
 
-    old_meb = '["Provide Feedback","Give Feedback"],["Backup and Restore","Backup and Restore"]'
-    new_meb = '["Provide Feedback","Give Feedback"],["Backup and Restore","Backup and Restore"],["Notifications","Notification Settings"]'
-    content = must_replace(content, old_meb, new_meb, "mEb_notifications_label")
+    # 1. Update dPb label map
+    old_dpb = '["Provide Feedback","Give Feedback"],["Backup and Restore","Backup and Restore"]'
+    new_dpb = '["Provide Feedback","Give Feedback"],["Backup and Restore","Backup and Restore"],["Notifications","Notification Settings"]'
+    content = must_replace(content, old_dpb, new_dpb, "dPb_notifications_label")
 
-    old_clb = 'var cLb=()=>oj().get("notificationsSettings")??!1?B.createElement(HQ,{title:"Notifications",description:"Manage your notification preferences."},B.createElement(LQ,{title:"General"},B.createElement(JQ,null,B.createElement(MR,{settingKey:"enableNotificationsForSpecialEvents"}))),B.createElement(LQ,{title:"Sound"},B.createElement(JQ,null,B.createElement(MR,{settingKey:"enableSoundsForSpecialEvents"}),B.createElement(bLb,null)))):null;'
+    # 2. Make Notifications always visible on Android
+    old_r0b = 'var r0b=()=>{var a=bk(),b=a.get("notificationsSettings")??!1'
+    new_r0b = 'var r0b=()=>{var a=bk(),b=!0'
+    content = must_replace(content, old_r0b, new_r0b, "r0b_force_notification_settings_visible")
 
+    # 3. Replace cWb notification settings screen
     notification_settings_comp = """var NotificationSettingsScreen=()=>{
-var [coreEnabled,setCoreEnabled]=(0,B.useState)(!0);
-var [progressEnabled,setProgressEnabled]=(0,B.useState)(!0);
-var [alertsEnabled,setAlertsEnabled]=(0,B.useState)(!0);
-var [testStatus,setTestStatus]=(0,B.useState)("");
-(0,B.useEffect)(()=>{
+var [coreEnabled,setCoreEnabled]=(0,E.useState)(!0);
+var [progressEnabled,setProgressEnabled]=(0,E.useState)(!0);
+var [alertsEnabled,setAlertsEnabled]=(0,E.useState)(!0);
+var [testStatus,setTestStatus]=(0,E.useState)("");
+(0,E.useEffect)(()=>{
 try{
 if(typeof window!=="undefined"&&window.Android&&typeof window.Android.getNotificationSettings==="function"){
 var s=JSON.parse(window.Android.getNotificationSettings()||"{}");
@@ -763,552 +598,278 @@ try{window.Android&&window.Android.setNotificationSetting&&window.Android.setNot
 var onOpenSystemSettings=()=>{
 try{window.Android&&window.Android.openNotificationSettings&&window.Android.openNotificationSettings()}catch(_){}
 };
-var onTestProgress=()=>{
-setTestStatus("Dispatched test persistent task progress notification...");
-try{
-var cid="demo_"+Math.random().toString(36).substring(2,7);
-window.Android&&window.Android.postNotification&&window.Android.postNotification("task_progress","Antigravity Task Progress","Running task in test conversation",cid,!0,45);
-setTimeout(()=>{
-setTestStatus("Active in notification shade. Tap to open or wait 6s to auto-clear.");
-setTimeout(()=>{
-window.Android&&window.Android.cancelNotification&&window.Android.cancelNotification("cascade_prog_"+cid,0);
-setTestStatus("");
-},6000);
-},600);
-}catch(e){setTestStatus("Error: "+e.message)}
-};
-var onTestAlert=()=>{
-setTestStatus("Dispatched test floating alert notification...");
-try{
-var cid="demo_"+Math.random().toString(36).substring(2,7);
-window.Android&&window.Android.postNotification&&window.Android.postNotification("task_alerts_completion","Antigravity Task Alerts and Completion","Task completed successfully in background!",cid,!1,-1);
-setTimeout(()=>setTestStatus("Floating heads-up notification sent!"),400);
-}catch(e){setTestStatus("Error: "+e.message)}
-};
-return B.createElement(HQ,{title:"Notification Settings",description:"Configure background task progress and floating alert notifications."},
-B.createElement("div",{className:"space-y-6 max-w-2xl pb-8 p-1"},
-testStatus&&B.createElement("div",{className:"p-3 rounded-xl bg-primary/10 border border-primary/20 text-xs text-primary font-medium"},testStatus),
-B.createElement("div",{className:"space-y-4"},
-B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},
-B.createElement("div",{className:"flex items-start justify-between gap-3"},
-B.createElement("div",{className:"space-y-0.5"},
-B.createElement("div",{className:"font-semibold text-base text-foreground"},"Antigravity Core Running"),
-B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},"An ongoing notification showing that the background Antigravity core language server is active.")),
-B.createElement("input",{type:"checkbox",checked:coreEnabled,onChange:onToggleCore,className:"h-5 w-5 rounded border-border accent-primary cursor-pointer mt-1"}))),
-B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},
-B.createElement("div",{className:"flex items-start justify-between gap-3"},
-B.createElement("div",{className:"space-y-0.5"},
-B.createElement("div",{className:"font-semibold text-base text-foreground"},"Antigravity Task Progress"),
-B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},"A persistent notification showing Antigravity running tasks of different conversations as separate notifications in the system notification shade.")),
-B.createElement("input",{type:"checkbox",checked:progressEnabled,onChange:onToggleProgress,className:"h-5 w-5 rounded border-border accent-primary cursor-pointer mt-1"})),
-B.createElement("div",{className:"pt-1"},
-B.createElement(sz,{variant:"secondary",size:"sm",onClick:onTestProgress,className:"flex items-center gap-1.5 text-xs"},
-B.createElement(nq,{name:"play_arrow",size:14}),"Test Progress Notification"))),
-B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},
-B.createElement("div",{className:"flex items-start justify-between gap-3"},
-B.createElement("div",{className:"space-y-0.5"},
-B.createElement("div",{className:"font-semibold text-base text-foreground"},"Antigravity Task Alerts and Completion"),
-B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},"A floating notification showing any Alerts or Completion of tasks of all running conversations as separate notifications.")),
-B.createElement("input",{type:"checkbox",checked:alertsEnabled,onChange:onToggleAlerts,className:"h-5 w-5 rounded border-border accent-primary cursor-pointer mt-1"})),
-B.createElement("div",{className:"pt-1"},
-B.createElement(sz,{variant:"secondary",size:"sm",onClick:onTestAlert,className:"flex items-center gap-1.5 text-xs"},
-B.createElement(nq,{name:"notifications_active",size:14}),"Test Floating Alert"))),
-B.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-3 shadow-xs"},
-B.createElement("div",{className:"space-y-0.5"},
-B.createElement("div",{className:"font-semibold text-base text-foreground"},"Android System Notification Channels"),
-B.createElement("p",{className:"text-xs text-muted-foreground mt-0.5 leading-relaxed"},"Configure system sound, vibration, popup banners, and lockscreen privacy for each notification channel in Android Settings.")),
-B.createElement("div",{className:"pt-1"},
-B.createElement(sz,{variant:"primary",size:"md",onClick:onOpenSystemSettings,className:"flex items-center gap-1.5 text-sm"},
-B.createElement(nq,{name:"tune",size:16}),"Manage in Android Settings"))))
-)
+
+return E.createElement("div",{className:"space-y-6 max-w-2xl pb-10"},
+E.createElement("div",{className:"space-y-1.5"},
+E.createElement("h2",{className:"text-xl font-bold tracking-tight text-foreground m-0"},"Android System Notifications"),
+E.createElement("p",{className:"text-sm text-muted-foreground m-0"},
+"Control floating alerts, silent completion banners, and persistent progress notifications.")),
+E.createElement("div",{className:"rounded-2xl border border-border bg-sidebar-muted/20 p-4 space-y-4 shadow-xs"},
+E.createElement("div",{className:"flex items-center justify-between gap-4"},
+E.createElement("div",{className:"space-y-0.5"},
+E.createElement("div",{className:"font-semibold text-sm text-foreground"},"Running Agent Task Notifications"),
+E.createElement("div",{className:"text-xs text-muted-foreground leading-relaxed"},"Shows ongoing background tasks across all conversations")),
+E.createElement("input",{type:"checkbox",checked:progressEnabled,onChange:onToggleProgress,className:"h-4 w-4 rounded accent-primary cursor-pointer"})),
+E.createElement("div",{className:"h-px bg-border/60"}),
+E.createElement("div",{className:"flex items-center justify-between gap-4"},
+E.createElement("div",{className:"space-y-0.5"},
+E.createElement("div",{className:"font-semibold text-sm text-foreground"},"Task Alerts & Completion (Silent)"),
+E.createElement("div",{className:"text-xs text-muted-foreground leading-relaxed"},"Floating banners when tasks finish or need input. All sounds muted.")),
+E.createElement("input",{type:"checkbox",checked:alertsEnabled,onChange:onToggleAlerts,className:"h-4 w-4 rounded accent-primary cursor-pointer"})),
+E.createElement("div",{className:"h-px bg-border/60"}),
+E.createElement("div",{className:"flex items-center justify-between gap-4"},
+E.createElement("div",{className:"space-y-0.5"},
+E.createElement("div",{className:"font-semibold text-sm text-foreground"},"Antigravity Core Background Status"),
+E.createElement("div",{className:"text-xs text-muted-foreground leading-relaxed"},"Foreground notification keeping the Linux environment and language server alive")),
+E.createElement("input",{type:"checkbox",checked:coreEnabled,onChange:onToggleCore,className:"h-4 w-4 rounded accent-primary cursor-pointer"}))),
+E.createElement("div",{className:"flex gap-2.5 pt-1"},
+E.createElement("button",{type:"button",onClick:onOpenSystemSettings,className:"px-3.5 py-2 rounded-xl text-xs font-semibold bg-secondary text-secondary-foreground border border-border cursor-pointer flex items-center gap-1.5 hover:bg-muted"},
+E.createElement(rx,{name:"settings",size:16}),"Open Android Channel Settings"))
 );
 };
-var cLb=()=>B.createElement(NotificationSettingsScreen,null);"""
+var cWb=()=>E.createElement(NotificationSettingsScreen,null);"""
 
-    content = must_replace(content, old_clb, notification_settings_comp, "replace_old_cLb_with_NotificationSettingsScreen")
+    old_cwb = 'var cWb=()=>bk().get("notificationsSettings")??!1?E.createElement(YU,{title:"Notifications",description:"Manage your notification preferences."},E.createElement(NV,{screen:"Notifications",renderSection:a=>a.id==="notifications-sound"&&a.settings.length>0?E.createElement(bV,{title:a.title,id:a.id},E.createElement($U,null,a.settings.map(b=>b==="agentSoundVolume"?E.createElement(bWb,{key:b}):E.createElement(MV,{key:b,settingKey:b})))):void 0})):null;'
+    content = must_replace(content, old_cwb, notification_settings_comp, "cWb_replace_notification_settings")
+
     return content
 
+
+def patch_convo_switcher(content):
+    """Deep linking hook window.__agyOpenConversation(cid) and router startup."""
+    if "window.__agyOpenConversation=" in content:
+        return content
+
+    # 1. Hook SBd and define window.__agyOpenConversation
+    old_sbd = 'function SBd(a){o7&&o7.navigate({to:"/c/$cascadeId",params:{cascadeId:a}})}'
+    new_sbd = (
+        'function SBd(a){if(o7){o7.navigate({to:"/c/$cascadeId",params:{cascadeId:a}})}}'
+        'window.__agyOpenConversation=function(a){if(!a)return;var c=String(a).trim();'
+        'try{if(typeof window.__agySwitchConversation==="function"){window.__agySwitchConversation(c);}}catch(_){}'
+        'try{if(o7){o7.navigate({to:"/c/$cascadeId",params:{cascadeId:c}});}else{window.__agyPendingCascadeId=c;}}catch(_){window.__agyPendingCascadeId=c;}};'
+    )
+    content = must_replace(content, old_sbd, new_sbd, "sbd_open_conversation_global")
+
+    # 2. Hook router creation to flush pending cascade ID
+    old_router = 'o7=p=new IAb({routeTree:OBd,history:q,InnerWrap:k,context:xBd,basepath:p.basepath,parseSearch:QBd,stringifySearch:RBd})'
+    new_router = (
+        'o7=p=new IAb({routeTree:OBd,history:q,InnerWrap:k,context:xBd,basepath:p.basepath,parseSearch:QBd,stringifySearch:RBd});'
+        'try{if(window.__agyPendingCascadeId){'
+        'var _pendCid=window.__agyPendingCascadeId;'
+        'window.__agyPendingCascadeId=null;'
+        'setTimeout(()=>{window.__agyOpenConversation(_pendCid)},50);'
+        '}}catch(_){}'
+    )
+    content = must_replace(content, old_router, new_router, "router_flush_pending_cascade_init")
+
+    # 3. Hook initial memory router path
+    old_mem = 'case "memory":q=pyb({initialEntries:[p.historyType.initialPath??"/"]});break b;'
+    new_mem = 'case "memory":q=pyb({initialEntries:[((typeof window!=="undefined"&&window.__agyPendingCascadeId)?("/c/"+window.__agyPendingCascadeId):(p.historyType.initialPath??"/"))]});break b;'
+    content = must_replace(content, old_mem, new_mem, "router_initial_memory_path_cascade")
+
+    return content
+
+
+def patch_conversation_search_all(content):
+    """Integrates Android native searchAllConversations bridge and search jump."""
+    if "window.Android.searchAllConversations" in content:
+        return content
+
+    # 1. In aBc: replace language server search with Android native ConversationSearchHelper
+    old_search_call = 'let R=P(await O(d({query:b,limit:H,filters:D||F?{archivedOnly:D||void 0,includeSideQuestions:F||void 0}:void 0,signal:L.signal})));'
+    new_search_call = (
+        'let R;'
+        'try{'
+        'if(typeof window!=="undefined"&&window.Android&&typeof window.Android.searchAllConversations==="function"){'
+        'var _raw=window.Android.searchAllConversations(b),_parsed=JSON.parse(_raw||"[]");'
+        'R={results:_parsed,indexStale:!1,diskFull:!1}'
+        '}else{'
+        'R=P(await O(d({query:b,limit:H,filters:D||F?{archivedOnly:D||void 0,includeSideQuestions:F||void 0}:void 0,signal:L.signal})))'
+        '}'
+        '}catch(_se){'
+        'R=P(await O(d({query:b,limit:H,filters:D||F?{archivedOnly:D||void 0,includeSideQuestions:F||void 0}:void 0,signal:L.signal})))'
+        '}'
+    )
+    content = must_replace(content, old_search_call, new_search_call, "abc_search_all_conversations")
+
+    # 2. In ZAc: unique ID per match occurrence, format label with step index, snippet and match highlighting
+    old_zac = 'function ZAc(a,b){var c=UAc(a.snippetMatchRanges),{snippet:d,matches:f}=VAc(a.snippet,c);(c=d.trim().replace(/^\\.\\.\\.|\\.\\.\\.$/g,"").trim())&&a.title.trim().toLowerCase().includes(c)&&(d="",f=void 0);return{type:"basic",item:{id:a.sideQuestionCascadeId?`${a.cascadeId}::${a.sideQuestionCascadeId}`:a.cascadeId,label:a.title||"Untitled Conversation"'
+    new_zac = (
+        'function ZAc(a,b){var c=UAc(a.snippetMatchRanges),{snippet:d,matches:f}=VAc(a.snippet,c);'
+        '(c=d.trim().replace(/^\\.\\.\\.|\\.\\.\\.$/g,"").trim())&&a.title&&a.title.trim().toLowerCase().includes(c)&&a.matchedStepIndex===void 0&&(d="",f=void 0);'
+        'var _stepSuffix=a.matchedStepIndex!==void 0?" \\u00b7 Step "+a.matchedStepIndex:"",'
+        '_lbl=(a.title||"Untitled Conversation")+_stepSuffix,'
+        '_uid=a.uniqueId||(a.cascadeId+":"+(a.matchedStepIndex!==void 0?a.matchedStepIndex:"0")+":"+(a.startOffset||0));'
+        'return{type:"basic",item:{id:_uid,cascadeId:a.cascadeId,matchedStepIndex:a.matchedStepIndex,snippet:a.snippet,queryMatches:a.snippetMatchRanges,label:_lbl'
+    )
+    content = must_replace(content, old_zac, new_zac, "zac_unique_item_and_step_label")
+
+    # 3. In selectOrClose: jump to conversation and step
+    old_select_close = 'selectOrClose:V=>{W(V);if(V){var da=WAc(V.id,R);f(da??{cascadeId:V.id})}d()}'
+    new_select_close = (
+        'selectOrClose:V=>{W(V);if(V){'
+        'var da=WAc(V.id,R);'
+        'var _cid=(V.cascadeId||(da&&da.cascadeId)||V.id||"").split(":")[0];'
+        'var _step=V.matchedStepIndex!==void 0?V.matchedStepIndex:(da&&da.matchedStepIndex);'
+        'var _snip=V.snippet||(da&&da.snippet)||"";'
+        'window.__agPendingConvoJump={cascadeId:_cid,stepIndex:_step,snippet:_snip,query:(b||"").trim(),time:Date.now()};'
+        'typeof window.__agTriggerPendingJump==="function"&&window.__agTriggerPendingJump();'
+        'f(da??{cascadeId:_cid})}d()}'
+    )
+    content = must_replace(content, old_select_close, new_select_close, "selectOrClose_step_jump")
+
+    # 4. In fXc: add data-step-index to user message row
+    old_fxc = 'var fXc=({userStep:a,userStepIndex:b,sendError:c,stackPosition:d})=>{var f=QZ();return E.createElement("div",{className:"flex w-full flex-row"},'
+    new_fxc = 'var fXc=({userStep:a,userStepIndex:b,sendError:c,stackPosition:d})=>{var f=QZ();return E.createElement("div",{className:"flex w-full flex-row","data-step-index":b},'
+    content = must_replace(content, old_fxc, new_fxc, "fxc_user_step_index_attr")
+
+    # 5. Inject window.__agTriggerPendingJump helper
+    jump_helper = (
+        'typeof window!=="undefined"&&!window.__agJumpInjected&&(window.__agJumpInjected=!0,window.__agTriggerPendingJump=function(){'
+        'var tries=0,timer=setInterval(function(){'
+        'tries++;'
+        'var jump=window.__agPendingConvoJump;'
+        'if(!jump||Date.now()-jump.time>15000||tries>40){clearInterval(timer);return}'
+        'var convoView=document.querySelector(\'[data-testid="conversation-view"]\');'
+        'if(!convoView)return;'
+        'var curCascade=convoView.getAttribute("data-cascade-id");'
+        'if(curCascade&&jump.cascadeId&&curCascade!==jump.cascadeId&&curCascade!=="conversation")return;'
+        'var el=null;'
+        'if(jump.stepIndex!==void 0&&jump.stepIndex!==null){'
+        'el=convoView.querySelector(\'[data-step-index="\'+jump.stepIndex+\'"]\');'
+        '}'
+        'if(!el&&jump.snippet){'
+        'var snip=jump.snippet.replace(/^[.\\s\\u2026]+|[.\\s\\u2026]+$/g,"").trim().toLowerCase();'
+        'if(snip.length>4){'
+        'var words=snip.split(/\\s+/).filter(function(w){return w.length>2}).slice(0,3);'
+        'var walker=document.createTreeWalker(convoView,NodeFilter.SHOW_TEXT);'
+        'var n;'
+        'while(n=walker.nextNode()){'
+        'var t=(n.textContent||"").toLowerCase();'
+        'if(t.includes(snip)||(words.length>0&&words.every(function(w){return t.includes(w)}))){'
+        'el=n.parentElement;break;'
+        '}'
+        '}'
+        '}'
+        '}'
+        'if(el){'
+        'clearInterval(timer);'
+        'window.__agPendingConvoJump=null;'
+        'var target=el.closest(\'[data-testid="agent-response"],[data-step-index],[data-turn-content],.message-row,p,div\')||el;'
+        'target.scrollIntoView({behavior:"smooth",block:"center"});'
+        'var origBg=target.style.backgroundColor,origTr=target.style.transition;'
+        'target.style.transition="background-color 300ms ease";'
+        'target.style.backgroundColor="rgba(255, 235, 59, 0.35)";'
+        'target.style.borderRadius="8px";'
+        'setTimeout(function(){'
+        'target.style.backgroundColor=origBg;'
+        'setTimeout(function(){target.style.transition=origTr},400);'
+        '},1600);'
+        '}'
+        '},120);'
+        '});'
+    )
+    content = jump_helper + content
+
+    return content
+
+
 def patch_lexical_android_select_delete(content):
+    """Exposes window.__agySelectAllInEditor for full range select on Android."""
     if "window.__agySelectAllInEditor=" in content:
         return content
 
-    # 1. Fix Android Chrome Lexical beforeinput deletion:
-    #    - Never skip DELETE_CHARACTER_COMMAND when selection is non-collapsed (e.g. Select All with skills)
-    #    - Handle NodeSelection (xL(g)) on deleteContentBackward / deleteContentForward / deleteByCut / deleteContent
-    old_eob = (
-        'if(b==="deleteContentBackward"){if(g===null){var h=eL();if(!cL(h))return!0;KK(h.clone())}if(cL(g)){b=g.anchor.key===g.focus.key;if(f.lastKeyCode==="MediaLast"&&a.timeStamp<f.lastKeyDownTimeStamp+\n'
-        '30&&d.isComposing()&&b)qL(null),f.lastKeyDownTimeStamp=0,setTimeout(()=>{GK(d,()=>{qL(null)})},30),cL(g)&&(a=SK(g.anchor),a.markDirty(),jJ(VK(a),"Anchor node must be a TextNode"),wpb(g,a));else{qL(null);if(qJ&&c!==null&&!c.collapsed&&(rL(g,c),!g.isCollapsed()))return a.preventDefault(),g.removeText(),!0;a.preventDefault();c=SK(g.anchor);a=c.getTextContent();c=c.canInsertTextAfter();a=g.anchor.offset===0&&g.focus.offset===a.length;(a=sJ&&b&&!a&&c)&&g.isCollapsed()&&(a=!sL(Dpb(g.anchor)));a||(FK(d,\n'
-        'AJ,!0),g=IK(),sJ&&cL(g)&&g.isCollapsed()&&(f.postDeleteSelectionToRestore=g,setTimeout(()=>f.postDeleteSelectionToRestore=null)))}return!0}}if(!cL(g))return!0;'
-    )
-    new_eob = (
-        'if(b==="deleteContentBackward"){if(g===null){var h=eL();if(!cL(h)&&!xL(h))return!0;g=h.clone();KK(g)}if(xL(g)){a.preventDefault();qL(null);FK(d,AJ,!0);return!0}if(cL(g)){b=g.anchor.key===g.focus.key;if(f.lastKeyCode==="MediaLast"&&a.timeStamp<f.lastKeyDownTimeStamp+\n'
-        '30&&d.isComposing()&&b)qL(null),f.lastKeyDownTimeStamp=0,setTimeout(()=>{GK(d,()=>{qL(null)})},30),cL(g)&&(a=SK(g.anchor),a.markDirty(),jJ(VK(a),"Anchor node must be a TextNode"),wpb(g,a));else{qL(null);if(qJ&&c!==null&&!c.collapsed&&(rL(g,c),!g.isCollapsed()))return a.preventDefault(),g.removeText(),!0;a.preventDefault();c=SK(g.anchor);a=c.getTextContent();c=c.canInsertTextAfter();a=g.anchor.offset===0&&g.focus.offset===a.length;a=g.isCollapsed()&&sJ&&b&&!a&&c&&!sL(Dpb(g.anchor));a||(FK(d,\n'
-        'AJ,!0),g=IK(),sJ&&cL(g)&&g.isCollapsed()&&(f.postDeleteSelectionToRestore=g,setTimeout(()=>f.postDeleteSelectionToRestore=null)))}return!0}}if(xL(g)&&(b==="deleteContentForward"||b==="deleteContent"||b==="deleteByCut"||b==="deleteWordBackward"||b==="deleteHardLineBackward"||b==="deleteSoftLineBackward")){a.preventDefault();qL(null);FK(d,AJ,b!=="deleteContentForward");return!0}if(!cL(g))return!0;'
-    )
-    content = must_replace(content, old_eob, new_eob, "lexical_android_select_all_delete_eob")
-
-    # 2. Expose window.__agySelectAllInEditor to select root(0..N) including leading/trailing skill pills
-    old_dob_end = 'else c=d.select(0,LK(d)),KK(CM(c));return!0},0)'
-    new_dob_end = (
-        'else c=d.select(0,LK(d)),KK(CM(c));return!0},0)'
-    )
-    old_cbb_after = 'function dBb(a){tO(()=>xJ(cBb(a),RAb(a)),[a])};'
-    new_cbb_after = (
-        'function dBb(a){tO(()=>xJ(cBb(a),RAb(a)),[a])};'
+    old_target = 'd=f.select(0,Ms(f)),Dt(Qw(d,f));return!0},0)'
+    new_target = (
+        'd=f.select(0,Ms(f)),Dt(Qw(d,f));return!0},0);'
         'if(typeof window!=="undefined")window.__agySelectAllInEditor=function(){try{'
         'var el=document.activeElement;'
         'var ed=el&&(el.__lexicalEditor||(el.closest&&el.closest(\'[contenteditable="true"]\')&&el.closest(\'[contenteditable="true"]\').__lexicalEditor));'
         'if(!ed){var bx=document.getElementById("antigravity.agentSidePanelInputBox");var ce=bx&&bx.querySelector(\'[contenteditable="true"]\');ed=ce&&ce.__lexicalEditor;}'
         'if(!ed)return!1;'
-        'ed.update(function(){var r=JK();r.select(0,LK(r));},{discrete:!0});'
-        'return!0;}catch(_){return!1;}};'
+        'ed.update(function(){var r=St();r.select(0,Ms(r));},{discrete:!0});'
+        'return!0;}catch(_){return!1;}}'
     )
-    content = must_replace(content, old_cbb_after, new_cbb_after, "lexical_expose_select_all_helper")
-
+    content = must_replace(content, old_target, new_target, "lexical_expose_select_all_helper")
     return content
+
+
+def apply_application_tab_patch(content):
+    if "agy-application-settings-anchor" in content:
+        return content
+
+    # In v2.35.2 parent base file, this is already applied or defined
+    return content
+
 
 def patch_main(file_path):
     if not os.path.isfile(file_path):
-        print(f"[web-patch-2.32.1] file not found: {file_path}", file=sys.stderr)
+        print(f"[web-patch-2.35.2] file not found: {file_path}", file=sys.stderr)
         return False
 
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    if "Android.getTheme" in content and "__agMpSmartV3" in content and "__AgRootEB" in content:
-        changed = False
-        if "BackupRestoreScreen" not in content:
-            print("[web-patch-2.32.1] Applying BackupRestoreScreen patch...")
-            content = patch_backup_restore(content)
-            changed = True
-        if 'data-testid="terminal-surface"' not in content and 'data-testid=\"terminal-surface\"' not in content:
-            print("[web-patch-2.32.1] Applying Terminal touch scroll patch...")
-            content = patch_terminal_touch_scroll(content)
-            changed = True
-        if "__agPendingConvoJump" not in content:
-            print("[web-patch-2.32.1] Applying Conversation Search Jump patch...")
-            content = patch_conversation_search_jump(content)
-            changed = True
-        if "Find in Conversation" not in content:
-            print("[web-patch-2.32.1] Applying Contextual Search Icon patch...")
-            content = patch_contextual_search_icon(content)
-            changed = True
-        if OLD_MP_BLOCK_V3 in content:
-            print("[web-patch-2.32.1] Updating Marketplace V3 RPCs with full catalog & Featured merge...")
-            content = content.replace(OLD_MP_BLOCK_V3, NEW_MP_BLOCK_V3, 1)
-            changed = True
-        if "window.Android.searchAllConversations" not in content:
-            print("[web-patch-2.32.1] Applying Conversation Search All occurrences patch...")
-            content = patch_conversation_search_all(content)
-            changed = True
-        if "window.__agyOpenConversation=" not in content:
-            print("[web-patch-2.32.1] Applying Conversation Switcher hook patch...")
-            content = patch_convo_switcher(content)
-            changed = True
-        if "__agyTaskProgressAlertsInjected_v2" not in content:
-            print("[web-patch-2.32.1] Applying Task Progress & Alerts Redux Notifications v2 patch...")
-            content = patch_task_notifications(content)
-            changed = True
-        if "NotificationSettingsScreen" not in content:
-            print("[web-patch-2.32.1] Applying Notification Settings clean screen patch...")
-            content = patch_notification_settings_clean(content)
-            changed = True
-        if "window.__agySelectAllInEditor=" not in content:
-            print("[web-patch-2.32.1] Applying Lexical Android Select All & Delete (including skills) patch...")
-            content = patch_lexical_android_select_delete(content)
-            changed = True
+    # Apply Marketplace V3 if needed
+    if OLD_MP_BLOCK_V3 and OLD_MP_BLOCK_V3 in content:
+        print("[web-patch-2.35.2] Updating Marketplace V3 RPCs...")
+        content = content.replace(OLD_MP_BLOCK_V3, NEW_MP_BLOCK_V3, 1)
 
-        if changed:
-            with open(file_path, "w", encoding="utf-8", newline="\n") as f:
-                f.write(content)
-            print("[web-patch-2.32.1] Successfully updated patches in main.js!")
-        else:
-            print("[web-patch-2.32.1] main.js already fully patched (v2.32.1 Android UI + Smart Marketplace V3 + RootEB + BackupRestore + Contextual Search + Message Jump)")
-        return True
-    # 1a. g_() system theme resolver via window.Android.getTheme()
-    content = must_replace(
-        content,
-        'function g_(){return typeof window!=="undefined"&&window.matchMedia?window.matchMedia("(prefers-color-scheme: dark)").matches:!1}',
-        'function g_(){try{if(typeof window!=="undefined"&&window.Android&&typeof window.Android.getTheme==="function"){var _t=window.Android.getTheme();if(_t==="dark")return!0;if(_t==="light")return!1}if(typeof window!=="undefined"&&window.__AG_RESOLVED_THEME__){if(window.__AG_RESOLVED_THEME__==="dark")return!0;if(window.__AG_RESOLVED_THEME__==="light")return!1}}catch(_e){}return typeof window!=="undefined"&&window.matchMedia?window.matchMedia("(prefers-color-scheme: dark)").matches:!1}',
-        "g__system_theme",
-    )
+    # Fix 1: Offline conversation access without login screen
+    if "/*__agyOfflineAccessBypass*/" not in content:
+        print("[web-patch-2.35.2] Applying Offline Conversation Access patch...")
+        content = patch_offline_access(content)
 
-    # 1b. Mrd(a) hostTheme=system resolver + unconditional startup call
-    content = must_replace(
-        content,
-        'function Mrd(a){if(typeof window!=="undefined"){var b=(new URLSearchParams(window.location.search)).get("hostTheme");b!=="dark"&&b!=="light"||rh.setState(b);',
-        'function Mrd(a){if(typeof window!=="undefined"){var b=(new URLSearchParams(window.location.search)).get("hostTheme");b==="system"&&(b=typeof window!=="undefined"&&window.Android&&window.Android.getTheme?window.Android.getTheme():(typeof window!=="undefined"?window.__AG_RESOLVED_THEME__:void 0));b!=="dark"&&b!=="light"||rh.setState(b);',
-        "Mrd_hostTheme",
-    )
-    content = must_replace(
-        content,
-        "d&&Mrd(f?.router);",
-        "Mrd(f?.router);",
-        "Mrd_startup_call",
-    )
+    # Fix 2: False-positive "no internet" banner fix
+    if "/*__agyOnlineBannerFix*/" not in content:
+        print("[web-patch-2.35.2] Applying True Network Connectivity check patch...")
+        content = patch_online_banner_fix(content)
 
-    # 1c. Theme sync (window.Android.setTheme, __agOnSystemThemeChanged, setThemeByUser)
-    content = must_replace(
-        content,
-        'z=C=>{m.setState(C);C=h_({hostTheme:b?rh.getState():void 0,themeMode:C});var F=u.getState();F=C===2?F.light:F.dark;var G=i_(C);YZ(G,F,C,b);l.setState(G);y(G)}',
-        'z=C=>{m.setState(C);var _origC=C;C=h_({hostTheme:b?rh.getState():void 0,themeMode:C});var F=u.getState();F=C===2?F.light:F.dark;var G=i_(C);YZ(G,F,C,b);l.setState(G);try{var _m=G.uiTheme==="vs-dark"?"dark":"light",_thm=b||_origC!==1?_m:"system";window.__agSelectedTheme=_thm;window.Android&&window.Android.setTheme&&window.Android.setTheme(_thm)}catch(_e){}y(G)}',
-        "theme_setTheme",
-    )
-    content = must_replace(
-        content,
-        ':window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{m.getState()===1&&z(1)});',
-        ':(c=()=>{if(c._updating)return;c._updating=!0;try{var _cur=window.Android&&window.Android.getTheme?window.Android.getTheme():window.__AG_RESOLVED_THEME__;if((_cur==="dark"||_cur==="light")&&rh.getState()!==_cur)rh.setState(_cur)}catch(_e){}try{m.getState()===1&&z(1)}catch(_e){}try{typeof window!=="undefined"&&window.dispatchEvent(typeof CustomEvent==="function"?new CustomEvent("__ag_theme_change"):new Event("__ag_theme_change"))}catch(_e){}c._updating=!1},c._updating=!1,window.__agOnSystemThemeChanged=c,rh.onDidChange(()=>{c._updating||c()}),window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",c));',
-        "theme_system_listener",
-    )
-    content = must_replace(
-        content,
-        "pushUpdate:C=>{switch(C){case 2:C=2;break;case 3:C=1;break;case 1:C=3;break;default:C=1}Crd(a,C)}",
-        'pushUpdate:C=>{var _orig=C;switch(C){case 2:C=2;break;case 3:C=1;break;case 1:C=3;break;default:C=1}Crd(a,C);z(_orig);try{var _um=_orig===2?"light":(_orig===3?"dark":"system");window.Android&&window.Android.setThemeByUser&&window.Android.setThemeByUser(_um)}catch(_e){}}',
-        "theme_pushUpdate",
-    )
+    # Fix 3 & Fix 4: Multi-conversation task notifications & silent completion
+    if "__agyTaskProgressAlertsInjected_v2" not in content:
+        print("[web-patch-2.35.2] Applying Multi-Conversation Tasks & Silent Completion patch...")
+        content = patch_task_notifications(content)
 
-    # 2. Enable AuxPane v2 redesign + Overview [📄] popover button (iZc) on Mobile & Desktop
-    content = must_replace(
-        content,
-        'auxPaneComponent:{feature:{overviewPanelMode:"outputs"}}',
-        'auxPaneComponent:{feature:{overviewPanelMode:"full",redesignEnabled:!0}}',
-        "auxPane_eCd",
-    )
-    content = must_replace(
-        content,
-        'auxPaneComponent:{feature:{location:"sidebar",redesignEnabled:!1,bottomTerminalPanelEnabled:!1,overviewPanelMode:"full"}',
-        'auxPaneComponent:{feature:{location:"sidebar",redesignEnabled:!0,bottomTerminalPanelEnabled:!1,overviewPanelMode:"full"}',
-        "auxPane_main",
-    )
-    content = must_replace(
-        content,
-        'function tBd(a,b,c){var d=()=>{var f=rBd(b);f&&sBd(a,f,b,g=>{g&&c()})};Yi()?d():a.initPromise.then(d,()=>{})}',
-        'function tBd(a,b,c){try{!Ti()&&c()}catch{}}',
-        "tBd_enable_aux_pane_redesign",
-    )
-    content = must_replace(
-        content,
-        '!b&&B.createElement(B.Fragment,null,B.createElement(NZc,{cascadeId:t}),B.createElement(yV,{iconName:"dock_to_bottom",onClick:p,"aria-label":"Toggle Side Panel",dataTestId:"mobile-toggle-aux-sidebar",\nsize:"icon-touch",showAttentionDot:n}))',
-        '!b&&B.createElement(B.Fragment,null,B.createElement(NZc,{cascadeId:t}),B.createElement(fZc,null),B.createElement(yV,{iconName:"dock_to_bottom",onClick:p,"aria-label":"Toggle Side Panel",dataTestId:"mobile-toggle-aux-sidebar",\nsize:"icon-touch",showAttentionDot:n}))',
-        "mobile_header_fZc",
-    )
-    content = must_replace(
-        content,
-        'n=u?B.createElement(e7c,{content:Z,sidePanel:aa,statusBar:V}):B.createElement(r7c,',
-        'n=u?B.createElement(e7c,{content:T,sidePanel:aa,statusBar:V}):B.createElement(r7c,',
-        "mobile_e7c_with_overview_host",
-    )
-    content = must_replace(
-        content,
-        'function AXc(a,b){a=b??a;',
-        'function AXc(a,b){a=a??b;',
-        "AXc_keep_open_when_count_positive",
-    )
-    content = must_replace(
-        content,
-        '{id:"modifiedFiles",title:"Modified Files",defaultEnabled:!1}',
-        '{id:"modifiedFiles",title:"Modified Files",defaultEnabled:!0}',
-        "enable_modifiedFiles_by_default",
-    )
-    content = must_replace(
-        content,
-        '{type:"fileView",id:"open-file",title:"Open File",icon:B.createElement(nq,{name:"draft",size:16}),onSelect:({logEvent:a,commandsService:b})=>{a("aux_new_tab_open_file_click");\nb?.executeCommand("openCommandPalette")}}',
-        '{type:"fileView",id:"open-file",title:"Open File",icon:B.createElement(nq,{name:"draft",size:16}),onSelect:({logEvent:a,openAuxTab:b,treeId:c})=>{a("aux_new_tab_open_file_click");\nb({type:"fileView",fileView:{}},void 0,{treeId:c,keepOpen:!0,source:"new_tab_card"})}}',
-        "open_file_card",
-    )
-    content = must_replace(
-        content,
-        'terminalFeature:{feature:null,important:[{runtimeGating:{host:[zi.Extension]},feature:null}]',
-        'terminalFeature:{feature:{terminalCapabilities:OX},important:[{runtimeGating:{host:[zi.Extension]},feature:null}]',
-        "terminalFeature_main",
-    )
-    content = must_replace(
-        content,
-        'fileExplorerTab:{feature:{isEnabled:!1},',
-        'fileExplorerTab:{feature:{isEnabled:!0},',
-        "fileExplorerTab_main",
-    )
+    # Fix 5: Lexical cursor jumping before punctuation mark
+    if "/*__agyPunctuationCursorFixed*/" not in content:
+        print("[web-patch-2.35.2] Applying Lexical Punctuation Cursor Jump fix...")
+        content = patch_lexical_punctuation_cursor_fix(content)
 
-    # 3. Enable Plugins/Marketplace V3 & Automations and wire them inside Settings (⚙️)
-    content = must_replace(
-        content,
-        'plugins:{feature:!1,applyAll:[{runtimeGating:{customFlag:"enable-plugins"},feature:!0}]}',
-        'plugins:{feature:!0,applyAll:[{runtimeGating:{customFlag:"enable-plugins"},feature:!0}]}',
-        "plugins_feature",
-    )
-    content = must_replace(
-        content,
-        'x=oh(Oi(b,"enable-sidecars"),C=>k&&(l||C));',
-        'x=new nh(!0);',
-        "extensibility_x",
-    )
-    content = must_replace(
-        content,
-        'showUISidecars:Oi(b,"enable-ui-sidecars"),showDeclaredPermissions:Oi(b,"jetski-sidecar-declared-permissions"),enableAutomations:Oi(b,"scheduled-tasks-v2")',
-        'showUISidecars:new nh(!0),showDeclaredPermissions:Oi(b,"jetski-sidecar-declared-permissions"),enableAutomations:new nh(!0)',
-        "extensibility_flags",
-    )
-    content = must_replace(
-        content,
-        'deletePlugin:async u=>f(async v=>{var w=Vb(tja);w.pluginId=u.pluginId;return v.deletePlugin(w)}),listPluginAuthProviders:async u=>f(v=>v.listPluginAuthProviders(Vb(uja,\nu??{}))),',
-        'deletePlugin:async u=>{try{var _dr=await f(async v=>{var w=Vb(tja);w.pluginId=u.pluginId;return v.deletePlugin(w)});if(_dr&&_dr.success!==!1)return _dr}catch(_e){}try{if(window.Android&&window.Android.uninstallMarketplacePlugin&&window.Android.uninstallMarketplacePlugin(u.pluginId)){await new Promise(r=>setTimeout(r,250));return{success:!0,message:""}}}catch(_e2){}return{success:!1,message:"Failed to delete plugin"}},listPluginAuthProviders:async()=>({providers:[]}),',
-        "deletePlugin_and_authProviders_fallback",
-    )
-    content = must_replace(
-        content,
-        'searchMarketplace:async u=>f(v=>v.searchMarketplace(Vb(Fja,{query:u.query??"",groupId:u.groupId??"",pageToken:u.pageToken??""}))),getMarketplaceCustomization:async u=>f(v=>v.getMarketplaceCustomization(Vb(Ija,{id:u.id,includePreview:u.includePreview??!1}))),getMarketplaceBundles:async u=>f(v=>v.getMarketplaceBundles(Vb(Eja,{ids:u.ids??[]}))),getMarketplaceFeatured:async()=>f(u=>u.getMarketplaceFeatured(Vb(Gja,{}))),getOnboardingPersonas:async()=>\nf(u=>u.getOnboardingPersonas(Vb(Hja,{}))),installCustomization:async u=>f(v=>v.installCustomization(Vb(Jja,{id:u.id,bundleId:u.bundleId}))),',
-        NEW_MP_BLOCK_V3,
-        "marketplace_rpcs_v3",
-    )
-    content = must_replace(
-        content,
-        'function HT(a,b){return b.find(c=>RMb(c.installedFrom,a))}',
-        'function HT(a,b){return b.find(c=>RMb(c.installedFrom,a)||(a?.id&&GT(c)===a.id.split("/").pop()))}',
-        "HT_match_by_dir_fallback",
-    )
-    content = must_replace(
-        content,
-        '["Jetski Chat",{sections:[]}],["Developer",{sections:[]}]]',
-        '["Automations",{sections:[]}],["Jetski Chat",{sections:[]}],["Developer",{sections:[]}]]',
-        "ZDb_screens",
-    )
-    content = must_replace(
-        content,
-        '{screen:"Customizations"},{screen:"Browser"},{screen:"Developer"},{screen:"Running"},{screen:"Jetski Chat"}],gEb="General Appearance Shortcuts Notifications Models Customizations Browser Developer Running".split(" ")',
-        '{screen:"Customizations"},{screen:"Automations"},{screen:"Browser"},{screen:"Developer"},{screen:"Running"},{screen:"Jetski Chat"}],gEb="General Appearance Shortcuts Notifications Models Customizations Automations Browser Developer Running".split(" ")',
-        "fEb_gEb_screens",
-    )
-    content = must_replace(
-        content,
-        '{screen:"Account"},{screen:"Customizations"},{screen:"Notifications"}',
-        '{screen:"Account"},{screen:"Customizations"},{screen:"Automations"},{screen:"Notifications"}',
-        "mobile_settings_screens",
-    )
-    content = must_replace(
-        content,
-        'g=l=>{if(!c)return l;l=new Map(l);l.delete("Customizations");return l}',
-        'g=l=>l',
-        "keep_customizations_in_settings",
-    )
-    content = must_replace(
-        content,
-        'var mPb=()=>{var {authorities:a,selectedAuthority:b,setSelectedAuthority:c,selectedGeminiDir:d,selectedConfigDir:f}=JT(),g=oj().get("projectsCustomizations")?.showHeadCustomizationsInMainScreen??!1,h=(0,B.useMemo)(()=>g?["file:///google/src/files/head/depot/"]:[],[g]);return a.length===0?B.createElement(HQ,{title:"Customizations"},B.createElement("div",{className:"flex items-center gap-2 text-muted-foreground"},B.createElement(Au,{size:14,className:"text-muted-foreground"}),"Connecting to language server...")):\nB.createElement(lPb,{key:b,geminiDir:d,configDir:f,workspaceUris:h,tabs:a.map(k=>({id:k.authority,label:k.displayName})),selectedAuthority:b,onSelectAuthority:c})};',
-        'var mPb=()=>B.createElement(S1b,null,B.createElement(Guc,null,B.createElement(FWc,{embedded:!0})));',
-        "mPb_replace_with_marketplace_FWc",
-    )
-    content = must_replace(
-        content,
-        'case "Customizations":return B.createElement(mPb,null);',
-        'case "Customizations":return B.createElement(mPb,null);case "Automations":return B.createElement(r$c,{automationPage:!0});',
-        "mobile_automations_screen",
-    )
-    content = must_replace(
-        content,
-        'B.createElement("div",{style:{display:c==="Customizations"?"block":"none"}},B.createElement(mPb,null))',
-        'B.createElement("div",{style:{display:c==="Customizations"?"block":"none"}},B.createElement(mPb,null)),B.createElement("div",{style:{display:c==="Automations"?"block":"none"}},B.createElement(r$c,{automationPage:!0}))',
-        "desktop_settings_automations_screen",
-    )
-    content = must_replace(
-        content,
-        'a({to:"/",search:g=>{g={...g};delete g.cascadeId;delete g.focused;',
-        'a({to:"/",search:g=>{g={...g};delete g.cascadeId;delete g.focused;delete g.settingsOpen;delete g.settingsScreen;delete g.settingsProjectId;delete g.settingsSection;',
-        "DI_close_settings",
-    )
+    # Backup & Restore custom screen
+    if "BackupRestoreScreen" not in content:
+        print("[web-patch-2.35.2] Applying BackupRestoreScreen patch...")
+        content = patch_backup_restore(content)
 
-    # Dual-mode AWc / FWc inside Settings modal and on /customizations route
-    old_AWc_FWc = (
-        'function AWc({tab:a,onSelect:b}){return B.createElement("nav",{"aria-label":"Customizations views",className:"agy-pill inline-flex items-center h-8 rounded-lg border border-border bg-secondary/20 p-0.5 gap-0.5 select-none","data-testid":"plugins-tabs"},zWc.map(({tab:c,to:d,label:f})=>{var g=c===a;return B.createElement($H,{key:c,to:d,activeOptions:{exact:!0},"aria-current":g?"page":void 0,onClick:()=>{g||b(c)},className:Gi("agy-pill inline-flex items-center justify-center h-full px-2 rounded-md shrink-0 whitespace-nowrap no-underline transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-primary",\n'
-        'g?"bg-secondary text-foreground":"text-secondary-foreground hover:text-foreground"),"data-testid":`plugins-tab-${c}`},f)}))};const BWc={source:"remote"};\n'
-        'function CWc({tab:a,MarkdownRenderer:b}){var {plugins:c,error:d,dismissError:f,refetch:g}=gQb(),h=oj().get("customizations");h=!!h?.showSkillsAndRules||!!h?.showCustomAgents||!!h?.showMcpServers;var k=B6().trim(),l=k.trim().toLowerCase(),m=(0,B.useMemo)(()=>(c??[]).filter(n=>(a==="browse"||n.isAuthenticated)&&C6(l,n.displayName,n.name,n.description)),[c,a,l]);k=k?`No apps found for "${k}".`:a==="browse"?"No apps available.":"No apps connected yet. Connect one from Marketplace.";return B.createElement("div",\n'
-        '{className:"flex flex-col gap-6"},B.createElement(DWc,null),B.createElement(L5,{title:a==="browse"?"Apps":"Connected",count:c?m.length:void 0,isFirst:!0},c?B.createElement(B.Fragment,null,d&&B.createElement(qU,{title:"Error:",message:d,onDismiss:f}),m.length===0?B.createElement(SVc,{message:k}):B.createElement("div",{className:"grid gap-2 grid-cols-1 sm:grid-cols-2"},m.map(n=>{var p=n.displayName||n.name,q=n.accounts.length>0?"Reconnect":"Connect";return B.createElement(v5,{key:n.name,name:p,description:n.description,\n'
-        'logo:n.logo,params:{pluginId:n.name},search:BWc,searchQuery:l,badge:a==="browse"&&n.isAuthenticated?B.createElement(u5,{variant:"muted"},"Connected"):void 0,action:!n.isAuthenticated&&n.authorizeUri?B.createElement(sz,{variant:"secondary",size:"xs","aria-label":`${q} ${p}`,onClick:()=>{Fm(n.authorizeUri)}},q):null})}))):d?B.createElement(RVc,{error:d,onRetry:()=>{g()}}):B.createElement(QVc,{label:"Loading apps..."})),a==="installed"&&h&&B.createElement(OVc,{MarkdownRenderer:b}))}\n'
-        'function DWc(){return B.createElement("div",{className:"flex gap-3 items-start px-4 py-3 rounded-xl border border-border"},B.createElement(nq,{name:"cloud",size:20,className:"shrink-0 mt-0.5 text-muted-foreground"}),B.createElement("div",{className:"flex flex-col gap-1"},B.createElement("p",{className:"font-medium text-foreground m-0"},"Apps connected to your account"),B.createElement("p",{className:"text-sm text-muted-foreground m-0"},"Sign in to an app once and your agent can use it on any device. Open an app to see the account it uses or to disconnect it.")))}\n'
-        ';function EWc({searchQuery:a,children:b}){a=VVc(a);return B.createElement(TVc.Provider,{value:a},b)};function FWc({MarkdownRenderer:a}={}){var {q:b}=dI({strict:!1}),c=SH({select:w=>w.location.pathname}),d=oj().get("customizations"),f=d?.showMarketplaceTab??!0,g=!f||c.startsWith("/customizations/installed")?"installed":"browse";c=d?.pluginSources??"local";var h=BY(),k=c==="remote",[l,m]=(0,B.useState)(()=>b??h.searchQuery),[n,p]=(0,B.useState)(b);n!==b&&(p(b),b!==void 0&&m(b));(0,B.useEffect)(()=>{h.searchQuery=l},[h,l]);var {logTabToggle:q,logSearch:t}=z5(),u=Psc(l,800),v=(0,B.useRef)(l);(0,B.useEffect)(()=>\n'
-        '{k||u===v.current||(v.current=u)&&t(g,u)},[u,g,k,t]);return B.createElement("div",{className:"flex-1 flex flex-col overflow-hidden h-full min-h-0 bg-background"},B.createElement("div",{className:"flex-1 overflow-y-auto min-h-0 [scrollbar-gutter:stable]"},B.createElement("div",{className:"sticky top-0 z-20 bg-background"},B.createElement("div",{className:"w-full max-w-4xl mx-auto px-4 sm:px-8 pt-8 pb-4 flex flex-col gap-4"},B.createElement("div",{className:"flex flex-wrap items-center justify-between gap-2 sm:gap-4"},\n'
-        'B.createElement("h1",{className:"text-xl font-medium text-foreground select-none sm:px-3 m-0"},"Customizations"),B.createElement("div",{className:"flex items-center gap-4"},f&&B.createElement(AWc,{tab:g,onSelect:q}))),B.createElement(yWc,{searchQuery:l,onSearchQueryChange:m,placeholder:"Search customizations...",inputTestId:"customizations-search"}))),B.createElement("div",{className:"max-w-4xl w-full mx-auto px-4 sm:px-8 py-6"},B.createElement(EWc,{searchQuery:k?"":l},B.createElement(bVc,{value:l},\n'
-        'k?B.createElement(CWc,{tab:g,MarkdownRenderer:a}):B.createElement(WH,null))))))}'
-    )
-    new_AWc_FWc = (
-        'function AWc({tab:a,onSelect:b,inRoute:inR=!0}){return B.createElement("nav",{"aria-label":"Customizations views",className:"agy-pill inline-flex items-center h-8 rounded-lg border border-border bg-secondary/20 p-0.5 gap-0.5 select-none","data-testid":"plugins-tabs"},zWc.map(({tab:c,to:d,label:f})=>{var g=c===a,cls=Gi("agy-pill inline-flex items-center justify-center h-full px-2 rounded-md shrink-0 whitespace-nowrap no-underline transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-primary",g?"bg-secondary text-foreground":"text-secondary-foreground hover:text-foreground");return inR?B.createElement($H,{key:c,to:d,activeOptions:{exact:!0},"aria-current":g?"page":void 0,onClick:()=>{g||b(c)},className:cls,"data-testid":`plugins-tab-${c}`},f):B.createElement("button",{key:c,type:"button","aria-current":g?"page":void 0,onClick:()=>{g||b(c)},className:Gi(cls,"border-none bg-transparent"),"data-testid":`plugins-tab-${c}`},f)}))};const BWc={source:"remote"};\n'
-        'function CWc({tab:a,MarkdownRenderer:b}){var {plugins:c,error:d,dismissError:f,refetch:g}=gQb(),h=oj().get("customizations");h=!!h?.showSkillsAndRules||!!h?.showCustomAgents||!!h?.showMcpServers;var k=B6().trim(),l=k.trim().toLowerCase(),m=(0,B.useMemo)(()=>(c??[]).filter(n=>(a==="browse"||n.isAuthenticated)&&C6(l,n.displayName,n.name,n.description)),[c,a,l]);k=k?`No apps found for "${k}".`:a==="browse"?"No apps available.":"No apps connected yet. Connect one from Marketplace.";return B.createElement("div",\n'
-        '{className:"flex flex-col gap-6"},B.createElement(DWc,null),B.createElement(L5,{title:a==="browse"?"Apps":"Connected",count:c?m.length:void 0,isFirst:!0},c?B.createElement(B.Fragment,null,d&&B.createElement(qU,{title:"Error:",message:d,onDismiss:f}),m.length===0?B.createElement(SVc,{message:k}):B.createElement("div",{className:"grid gap-2 grid-cols-1 sm:grid-cols-2"},m.map(n=>{var p=n.displayName||n.name,q=n.accounts.length>0?"Reconnect":"Connect";return B.createElement(v5,{key:n.name,name:p,description:n.description,\n'
-        'logo:n.logo,params:{pluginId:n.name},search:BWc,searchQuery:l,badge:a==="browse"&&n.isAuthenticated?B.createElement(u5,{variant:"muted"},"Connected"):void 0,action:!n.isAuthenticated&&n.authorizeUri?B.createElement(sz,{variant:"secondary",size:"xs","aria-label":`${q} ${p}`,onClick:()=>{Fm(n.authorizeUri)}},q):null})}))):d?B.createElement(RVc,{error:d,onRetry:()=>{g()}}):B.createElement(QVc,{label:"Loading apps..."})),a==="installed"&&h&&B.createElement(OVc,{MarkdownRenderer:b}))}\n'
-        'function DWc(){return B.createElement("div",{className:"flex gap-3 items-start px-4 py-3 rounded-xl border border-border"},B.createElement(nq,{name:"cloud",size:20,className:"shrink-0 mt-0.5 text-muted-foreground"}),B.createElement("div",{className:"flex flex-col gap-1"},B.createElement("p",{className:"font-medium text-foreground m-0"},"Apps connected to your account"),B.createElement("p",{className:"text-sm text-muted-foreground m-0"},"Sign in to an app once and your agent can use it on any device. Open an app to see the account it uses or to disconnect it.")))}\n'
-        ';function EWc({searchQuery:a,children:b}){a=VVc(a);return B.createElement(TVc.Provider,{value:a},b)};'
-        'var __agSafeMd=({markdown:md,className:cls,baseDirUri:bd})=>B.createElement(Bz,{value:void 0},B.createElement(h5,{cascadeId:void 0,markdown:md,context:"artifact",disableBrowserPreview:!0,className:cls,parseFrontmatter:!0,baseDirUri:bd}));'
-        'function FWc({MarkdownRenderer:a,embedded:emb=!1}={}){var {q:b}=dI({strict:!1}),c=SH({select:w=>w.location.pathname}),pMid=B.useContext(UH),inR=!emb&&pMid!==void 0&&c.startsWith("/customizations"),mdR=a||(inR?T5:__agSafeMd),[locTab,setLocTab]=(0,B.useState)("browse"),[det,setDet]=(0,B.useState)(null),d=oj().get("customizations"),f=d?.showMarketplaceTab??!0,g=!f?"installed":inR?(c.startsWith("/customizations/installed")?"installed":"browse"):locTab;c=d?.pluginSources??"local";var h=BY(),k=c==="remote",[l,m]=(0,B.useState)(()=>b??h.searchQuery),[n,p]=(0,B.useState)(b);n!==b&&(p(b),b!==void 0&&m(b));(0,B.useEffect)(()=>{h.searchQuery=l},[h,l]);'
-        '(0,B.useEffect)(()=>{if(!inR){window.__agCustSelect=setDet;window.__agCustTab=setLocTab;return()=>{if(window.__agCustSelect===setDet)window.__agCustSelect=null;if(window.__agCustTab===setLocTab)window.__agCustTab=null}}},[inR]);'
-        'var {logTabToggle:q,logSearch:t}=z5(),u=Psc(l,800),v=(0,B.useRef)(l);(0,B.useEffect)(()=>{k||u===v.current||(v.current=u)&&t(g,u)},[u,g,k,t]);'
-        'var onTab=tb=>{inR||setLocTab(tb);setDet(null);q(tb)};'
-        'if(!inR&&det)return B.createElement("div",{"data-agy-embedded-cust":"1",className:"flex-1 flex flex-col overflow-hidden h-full min-h-0 bg-background"},B.createElement("div",{className:"flex-1 overflow-y-auto min-h-0 [scrollbar-gutter:stable]"},B.createElement("div",{className:"w-full max-w-4xl mx-auto px-4 sm:px-8 py-4"},B.createElement("button",{type:"button",onClick:()=>setDet(null),className:"mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground bg-transparent border-none cursor-pointer p-0"},B.createElement(nq,{name:"arrow_back",size:16}),"Customizations"),det.bundleId?B.createElement($Uc,{bundleId:det.bundleId}):B.createElement(iGc,{installDir:det.installDir,catalogId:det.catalogId,onUninstalled:()=>setDet(null),onDisconnected:()=>setDet(null),MarkdownRenderer:mdR}))));'
-        'return B.createElement("div",{"data-agy-embedded-cust":inR?void 0:"1",className:"flex-1 flex flex-col overflow-hidden h-full min-h-0 bg-background"},B.createElement("div",{className:"flex-1 overflow-y-auto min-h-0 [scrollbar-gutter:stable]"},B.createElement("div",{className:"sticky top-0 z-20 bg-background"},B.createElement("div",{className:"w-full max-w-4xl mx-auto px-4 sm:px-8 pt-6 pb-4 flex flex-col gap-4"},B.createElement("div",{className:"flex flex-wrap items-center justify-between gap-2 sm:gap-4"},B.createElement("h1",{className:"text-xl font-medium text-foreground select-none sm:px-3 m-0"},"Customizations"),B.createElement("div",{className:"flex items-center gap-4"},f&&B.createElement(AWc,{tab:g,onSelect:onTab,inRoute:inR}))),B.createElement(yWc,{searchQuery:l,onSearchQueryChange:m,placeholder:"Search customizations...",inputTestId:"customizations-search"}))),B.createElement("div",{className:"max-w-4xl w-full mx-auto px-4 sm:px-8 py-6"},B.createElement(EWc,{searchQuery:k?"":g==="browse"?l:""},B.createElement(bVc,{value:l},k?B.createElement(CWc,{tab:g,MarkdownRenderer:mdR}):inR?B.createElement(WH,null):(g==="browse"?B.createElement(tWc,{MarkdownRenderer:mdR}):B.createElement(cWc,{MarkdownRenderer:mdR})))))))}'
-    )
-    content = must_replace(content, old_AWc_FWc, new_AWc_FWc, "AWc_FWc_dual_mode")
+    # Notification Settings screen
+    if "NotificationSettingsScreen" not in content:
+        print("[web-patch-2.35.2] Applying Notification Settings clean screen patch...")
+        content = patch_notification_settings_clean(content)
 
-    content = must_replace(
-        content,
-        'g=Ak(u=>u.newConvoResourceSelector.selectedEnvironmentByProject),h=c.get("currentWorkspace")?.workspaceUri??void 0,k=a||b?.project?.id;a=(0,B.useMemo)(()=>k?d.getProjectStateProvider(k):void 0,[k,d]);a=Ek(a);var l=k?g[k]:void 0',
-        'g=Ak(u=>u.newConvoResourceSelector?.selectedEnvironmentByProject),h=c.get("currentWorkspace")?.workspaceUri??void 0,k=a||b?.project?.id;a=(0,B.useMemo)(()=>k?d.getProjectStateProvider(k):void 0,[k,d]);a=Ek(a);var l=k&&g?g[k]:void 0',
-        "safe_redux_selectedEnvironmentByProject",
-    )
+    # Convo switcher & deep linking
+    if "window.__agyOpenConversation=" not in content:
+        print("[web-patch-2.35.2] Applying Conversation Switcher hook patch...")
+        content = patch_convo_switcher(content)
 
-    content = must_replace(
-        content,
-        'return SH({select:c=>{c=c.matches.find(d=>a.from?a.from===d.routeId:d.id===b);VH(!((a.shouldThrow??!0)&&!c),`Could not find ${a.from?`an active match from "${a.from}"`:"a nearest match!"}`);if(c!==void 0)return a.select?a.select(c):c},structuralSharing:a.structuralSharing})}',
-        'return SH({select:c=>{c=c.matches.find(d=>a.from?a.from===d.routeId:d.id===b)||c.matches[c.matches.length-1]||{params:{},_strictParams:{},search:{},_strictSearch:{}};if(c!==void 0)return a.select?a.select(c):c},structuralSharing:a.structuralSharing})}',
-        "route_match_fallback_outside_outlet",
-    )
+    # Conversation search all
+    if "window.Android.searchAllConversations" not in content:
+        print("[web-patch-2.35.2] Applying Conversation Search All occurrences patch...")
+        content = patch_conversation_search_all(content)
 
-    content = must_replace(
-        content,
-        'B.createElement($H,{to:d,params:f,search:g,onClick:m,"aria-label":p,className:"rounded-sm after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary text-left"}',
-        'B.createElement($H,{to:d,params:f,search:g,onClick:ev=>{m?.(ev);if(typeof window!=="undefined"&&window.__agCustSelect&&ev?.currentTarget?.closest?.(\'[data-agy-embedded-cust]\')){ev.preventDefault();window.__agCustSelect({installDir:d==="/customizations/plugins/$pluginId"?f?.pluginId:void 0,catalogId:g?.id||(f?uB(f):void 0)})}},"aria-label":p,className:"rounded-sm after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary text-left"}',
-        "v5_card_detail_in_settings",
-    )
-
-    content = must_replace(
-        content,
-        'B.createElement($H,{to:"/customizations",search:c?{q:b}:void 0,className:d},f)',
-        'B.createElement($H,{to:"/customizations",search:c?{q:b}:void 0,onClick:ev=>{if(typeof window!=="undefined"&&window.__agCustTab&&ev?.currentTarget?.closest?.(\'[data-agy-embedded-cust]\')){ev.preventDefault();window.__agCustTab("browse")}},className:d},f)',
-        "browse_in_settings",
-    )
-
-    content = must_replace(
-        content,
-        'var lZ=()=>{var {getActiveEditor:a}=(0,B.useContext)(XI),{logEvent:b}=GB(),c=DI();return(0,B.useCallback)((d,f)=>{b("AGENT_MANAGER_HOME");c({project:d,clearProject:f?.clearProject});queueMicrotask(()=>{var g=a();g&&document.hasFocus()&&JO(g)})},[a,b,c])};',
-        'var lZ=()=>{var {getActiveEditor:a}=(0,B.useContext)(XI),{logEvent:b}=GB(),c=DI(),hideS=(0,B.useContext)(dMb)?.triggerHideSettingsModal;return(0,B.useCallback)((d,f)=>{hideS?.();b("AGENT_MANAGER_HOME");c({project:d,clearProject:f?.clearProject});queueMicrotask(()=>{var g=a();g&&document.hasFocus()&&JO(g)})},[a,b,c,hideS])};',
-        "lZ_close_settings_on_prompt",
-    )
-
-    content = must_replace(
-        content,
-        'mlb=()=>{var a=aI(),b=glb();return(0,B.useCallback)(c=>{var d=b();a({to:"/sidecars/$sidecarId",params:{sidecarId:c},...(d?{search:d}:{})})},[a,b])}',
-        'mlb=()=>{var a=aI(),b=glb(),hideS=(0,B.useContext)(dMb)?.triggerHideSettingsModal;return(0,B.useCallback)(c=>{hideS?.();var d=b();a({to:"/sidecars/$sidecarId",params:{sidecarId:c},...(d?{search:d}:{})})},[a,b,hideS])}',
-        "mlb_close_settings",
-    )
-
-    content = must_replace(
-        content,
-        'olb=()=>{var a=aI(),b=glb();return(0,B.useCallback)(c=>{var d=b();a({to:"/sidecars/triggers/$triggerId",params:{triggerId:c},...(d?{search:d}:{})})},[a,b])}',
-        'olb=()=>{var a=aI(),b=glb(),hideS=(0,B.useContext)(dMb)?.triggerHideSettingsModal;return(0,B.useCallback)(c=>{hideS?.();var d=b();a({to:"/sidecars/triggers/$triggerId",params:{triggerId:c},...(d?{search:d}:{})})},[a,b,hideS])}',
-        "olb_close_settings",
-    )
-
-    content = must_replace(
-        content,
-        'k=b?ppd(b):"/",l=f(await d(g({initialPath:k,',
-        'k=b?ppd(b):"/sdcard",l=f(await d(g({initialPath:k,',
-        "default_sdcard_path",
-    )
-
-    # 4. Enable Voice Mode, Microphone, Permissions Selector, and touch/menu fixes
-    content = must_replace(
-        content,
-        'inputComponent:{feature:{hideAgentSelectorIfEmpty:!1,hideInSubagentConversation:!1,showPermissionsSelector:!1,disableInlineCompletion:!0,showInternalModesDropdown:!1,enableMicrophone:f,showModelUsage:!0,enableFileSystemCategoriesInMentions:!1,enableGoogleWorkspaceMentions:!1,enableVoiceRelay:!1,enablePasteTextAsSnippet:!1,\nenableHelpCommand:!1}',
-        'inputComponent:{feature:{hideAgentSelectorIfEmpty:!1,hideInSubagentConversation:!1,showPermissionsSelector:!0,disableInlineCompletion:!0,showInternalModesDropdown:!1,enableMicrophone:!0,showModelUsage:!0,enableFileSystemCategoriesInMentions:!1,enableGoogleWorkspaceMentions:!1,enableVoiceRelay:!0,enablePasteTextAsSnippet:!0,\nenableHelpCommand:!1}',
-        "inputComponent_full",
-    )
-    content = must_replace(
-        content,
-        '{runtimeGating:{host:[zi.Web.Desktop,zi.Electron],customFlag:"enable-permissions-selector"},feature:{showPermissionsSelector:!0}}',
-        '{runtimeGating:{customFlag:"enable-permissions-selector"},feature:{showPermissionsSelector:!0}}',
-        "showPermissionsSelector_gating",
-    )
-    content = must_replace(
-        content,
-        'inputComponent:{feature:{disableInlineCompletion:!0,showInternalModesDropdown:!1,enableMicrophone:!1,enableVoiceRelay:!1},applyAll:',
-        'inputComponent:{feature:{disableInlineCompletion:!0,showInternalModesDropdown:!1,showPermissionsSelector:!0,enableMicrophone:!0,enableVoiceRelay:!0},applyAll:',
-        "inputComponent_short",
-    )
-    content = must_replace(
-        content,
-        'remoteConversationCapabilities:{feature:{fork:!1,conversationMentions:!1,sideQuestion:!1,subagentMessaging:!1,revealInFileManager:!1,extensions:!1,connectors:!1,terminal:!1,browserSubagent:!1,localPaths:!1,voice:!1}',
-        'remoteConversationCapabilities:{feature:{fork:!1,conversationMentions:!1,sideQuestion:!1,subagentMessaging:!1,revealInFileManager:!1,extensions:!1,connectors:!1,terminal:!0,browserSubagent:!1,localPaths:!1,voice:!0}',
-        "remoteConversationCapabilities",
-    )
-    content = must_replace(
-        content,
-        'Xa=[...(T9()?["enable-conversation-selection-quoting"]:[])',
-        'Xa=["enable-voice-relay","enable-voice-remote","enable-permissions-selector","enable-paste-text-as-snippet","jetski-autonomous-mode",...(T9()?["enable-conversation-selection-quoting"]:[])',
-        "Xa_customFlags",
-    )
-    content = must_replace(
-        content,
-        'let gS={isAvailable:!1,voiceState:"off",voiceConvId:null,muted:!1,liveLines:bS,speed:1};',
-        'let gS={isAvailable:!0,voiceState:"off",voiceConvId:null,muted:!1,liveLines:bS,speed:1};',
-        "gS_voice_isAvailable",
-    )
-    content = must_replace(
-        content,
-        'some(k=>k.kind==="audioinput");b(h)}else b(!1)',
-        'some(k=>k.kind==="audioinput");b(!0)}else b(!0)',
-        "hasMicrophone_always_true",
-    )
-    content = must_replace(
-        content,
-        'enabled:Oi(a,"enable-audio-transcription")}',
-        'enabled:new nh(!0)}',
-        "audioTranscription_enabled",
-    )
-    content = must_replace(
-        content,
-        'var G=!n&&c;v=(x||v)&&w;w=a&&!c&&!y?.isOn;var H=b??a;a=q==="idle"&&!n&&!D;f=f||l||m||p;l=!!y&&!y.isOn&&!f&&!c&&a;',
-        'var G=!n&&c;v=!!w;w=a&&!c&&!y?.isOn;var H=b??a;a=q==="idle"&&!D;f=f||l||m||p;l=!!y&&!y.isOn&&!f&&!c&&a;',
-        "micAndVoice_idle",
-    )
-    content = must_replace(
-        content,
-        "Eb=XRc({cascadeId:N,planModel:z?.value,enabled:!na&&Dd&&(ra??nG).voice&&(!hb||!!N)})",
-        "Eb=XRc({cascadeId:N,planModel:z?.value||1018,enabled:!na&&Dd&&(ra??nG).voice&&(!hb||!!N)})",
-        "XRc_planModel_fallback",
-    )
-    content = must_replace(
-        content,
-        '"shrink-0 whitespace-nowrap @max-[400px]/input-footer:w-7 @max-[400px]/input-footer:justify-center @max-[400px]/input-footer:!p-1.5",I&&"!cursor-not-allowed opacity-50 hover:!bg-transparent")},B.createElement(pPc,{preset:c,className:"@max-[400px]/input-footer:!h-4 @max-[400px]/input-footer:!w-4"}),B.createElement("span",{className:"@max-[400px]/input-footer:hidden"},z),!I&&B.createElement(nq,{name:"keyboard_arrow_down",size:14,className:"shrink-0 @max-[400px]/input-footer:hidden"})',
-        '"shrink-0 whitespace-nowrap",I&&"!cursor-not-allowed opacity-50 hover:!bg-transparent")},B.createElement(pPc,{preset:c,className:""}),B.createElement("span",{className:""},z),!I&&B.createElement(nq,{name:"keyboard_arrow_down",size:14,className:"shrink-0"})',
-        "mobilePermissionsBadge",
-    )
-
-    # 5. Touch & Marketplace refresh fixes
-    content = must_replace(
-        content,
-        "Jf=Kf=>{var ig=Kc.current?.getRootElement();ig&&document.activeElement===ig&&!ig.contains(Kf.target)&&\nKf.preventDefault()}",
-        'Jf=Kf=>{var ig=Kc.current?.getRootElement();ig&&document.activeElement===ig&&!ig.contains(Kf.target)&&!(Kf.target instanceof Element&&Kf.target.closest(\'button,[role="button"],[aria-haspopup],[data-testid="project-selector-trigger"],[data-testid="model-selector-trigger"]\'))&&\nKf.preventDefault()}',
-        "pointerdown_allow_menu_triggers",
-    )
-    content = must_replace(
-        content,
-        'return{onPointerDown(x){p.current=x.pointerType},\nonMouseDown(x){var y=p.current,z=x.nativeEvent,A=m.select("open");if(!(x.button!==0||d==="click"||aw(y,!0)&&g)){var D=w(A,x.currentTarget,F=>F==="click"||F==="mousedown");A=Tv(z);if(Xv(A))v(D,z,A,y);else{var C=x.currentTarget;q.request(()=>{v(D,z,C,y)})}}},onClick(x){if(d!=="mousedown-only"){var y=p.current;if(d==="mousedown"&&y)p.current=void 0;else if(!aw(y,!0)||!g){var z=m.select("open");z=w(z,x.currentTarget,A=>A==="click"||A==="mousedown"||A==="keydown"||A==="keyup");v(z,x.nativeEvent,x.currentTarget,\ny)}}},onKeyDown(){p.current=void 0}}',
-        'return{onPointerDown(x){p.current=x.pointerType;p.md=!1},\nonMouseDown(x){var y=p.current,z=x.nativeEvent,A=m.select("open");if(!(x.button!==0||d==="click"||aw(y,!0)&&g)){p.md=!0;var D=w(A,x.currentTarget,F=>F==="click"||F==="mousedown");A=Tv(z);if(Xv(A))v(D,z,A,y);else{var C=x.currentTarget;q.request(()=>{v(D,z,C,y)})}}},onClick(x){if(d!=="mousedown-only"){var y=p.current;if(d==="mousedown"&&y&&p.md)p.current=void 0,p.md=!1;else if(p.current=void 0,p.md=!1,!aw(y,!0)||!g){var z=m.select("open");z=w(z,x.currentTarget,A=>A==="click"||A==="mousedown"||A==="keydown"||A==="keyup");v(z,x.nativeEvent,x.currentTarget,\ny)}}},onKeyDown(){p.current=void 0;p.md=!1}}',
-        "BaseUI_click_fallback_when_mousedown_prevented",
-    )
-    content = must_replace(
-        content,
-        "async function K1b(a){var b=e,c=e;try{a.isStreaming()?c(await b(a.refreshSkills())):c(await b(a.refresh()))}finally{b()}}",
-        "async function K1b(a){var b=e,c=e;try{c(await b(a.refresh()))}finally{b()}}",
-        "K1b_always_refresh_plugins_and_skills",
-    )
-
-    # 6. Global Root ErrorBoundary (__AgRootEB) above SettingsModal & Router to prevent #root unmount gray screens
-    old_root_render = (
-        '((u=h)=>{n.render(B.createElement(zra.Provider,{value:f},B.createElement(zad,{...q,featureManagerV2:u,routingConfig:m,updateService:g.updateService,managerSyncedState:g.managerSyncedState,fileSystemProviders:g.fileSystemProviders,\n'
-        'MermaidDiagramComponent:fDd,WebEffects:g.WebEffects,diagnosticsService:g.diagnosticsService,settingsSyncedState:g.settingsSyncedState})))})();'
-    )
-    new_root_render = (
-        'var __AgRootEB=class extends B.Component{constructor(pr){super(pr);this.state={err:null,retries:0}}static getDerivedStateFromError(er){return{err:er||Error("UI render error")}}componentDidCatch(er,inf){try{console.error("[AGY RootErrorBoundary]",er,inf&&inf.componentStack)}catch(_e){}if(this.state.retries<1){var _s=this;setTimeout(function(){try{if(window.history&&window.location&&window.location.search.indexOf("settingsOpen")!==-1){var _u=new URL(window.location.href);_u.searchParams.delete("settingsOpen");_u.searchParams.delete("settingsScreen");window.history.replaceState(window.history.state,"",_u.pathname+_u.search+_u.hash)}}catch(_e2){}_s.setState(function(st){return{err:null,retries:st.retries+1}})},60)}}render(){if(!this.state.err)return this.props.children;if(this.state.retries<1)return null;var _msg=String(this.state.err&&(this.state.err.message||this.state.err)||"Unexpected UI error");return B.createElement("div",{"data-testid":"agy-root-error-fallback",style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",width:"100vw",padding:"24px",boxSizing:"border-box",background:"var(--background,#101010)",color:"var(--foreground,#f4f4f5)",fontFamily:"system-ui,-apple-system,sans-serif",textAlign:"center",gap:"12px"}},B.createElement("div",{style:{fontSize:"16px",fontWeight:600}},"Interface recovered from a view error"),B.createElement("div",{style:{fontSize:"12px",opacity:.72,maxWidth:"440px",wordBreak:"break-word"}},_msg),B.createElement("div",{style:{display:"flex",gap:"10px",marginTop:"6px"}},B.createElement("button",{type:"button",onClick:()=>this.setState({err:null}),style:{padding:"8px 14px",borderRadius:"8px",border:"1px solid rgba(128,128,128,0.35)",background:"transparent",color:"inherit",fontSize:"13px",cursor:"pointer"}},"Retry View"),B.createElement("button",{type:"button",onClick:()=>{try{window.location.reload()}catch(_e){}},style:{padding:"8px 14px",borderRadius:"8px",border:"none",background:"#3b82f6",color:"#fff",fontSize:"13px",fontWeight:500,cursor:"pointer"}},"Reload Interface")))}};'
-        '((u=h)=>{n.render(B.createElement(__AgRootEB,null,B.createElement(zra.Provider,{value:f},B.createElement(zad,{...q,featureManagerV2:u,routingConfig:m,updateService:g.updateService,managerSyncedState:g.managerSyncedState,fileSystemProviders:g.fileSystemProviders,\n'
-        'MermaidDiagramComponent:fDd,WebEffects:g.WebEffects,diagnosticsService:g.diagnosticsService,settingsSyncedState:g.settingsSyncedState}))))})();'
-    )
-    content = must_replace(content, old_root_render, new_root_render, "root_error_boundary")
-    content = patch_lexical_android_select_delete(content)
+    # Lexical select all
+    if "window.__agySelectAllInEditor=" not in content:
+        print("[web-patch-2.35.2] Applying Lexical Android Select All helper...")
+        content = patch_lexical_android_select_delete(content)
 
     assert "Desktop Mode" not in content, "Desktop Mode must not be present in Android main.js"
 
     with open(file_path, "w", encoding="utf-8", newline="\n") as f:
         f.write(content)
 
-    print("[web-patch-2.32.1] Successfully patched Android main.js (v2.32.1 + Smart Marketplace V3)!")
+    print("[web-patch-2.35.2] Successfully patched Android main.js (v2.35.2 + Offline Access + Silent Multi-Notifications + Cursor Fix)!")
     return True
+
+
+OLD_MP_BLOCK_V3 = ""  # For fresh base files where it is not yet replaced
 
 
 if __name__ == "__main__":

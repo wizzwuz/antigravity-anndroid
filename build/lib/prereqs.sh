@@ -37,7 +37,7 @@ check_tools() {
                 -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1 || true
         fi
     fi
-    [ -f "$KEYSTORE" ]           || die "keystore not found: $KEYSTORE"
+    [ -f "$KEYSTORE" ] || [ "${KEY_ALIAS:-}" = "androiddebugkey" ] || die "keystore not found: $KEYSTORE"
     [ -f "$MANIFEST_XML" ]       || die "manifest not found: $MANIFEST_XML"
     [ -d "$WEB_DIR" ]            || die "web/ not found: $WEB_DIR"
     [ -f "$GEN_ANDROID_CONFIG" ] || die "gen_android_config.py not found: $GEN_ANDROID_CONFIG"

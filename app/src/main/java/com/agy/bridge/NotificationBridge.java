@@ -53,9 +53,6 @@ public final class NotificationBridge {
     }
 
     public String list() {
-        if (shizuku != null && shizuku.isAvailable()) {
-            return shizuku.exec("dumpsys notification --noredact | grep -E 'pkg=|android.title=|android.text=' | head -n 40");
-        }
         return listLocalJson(context);
     }
 

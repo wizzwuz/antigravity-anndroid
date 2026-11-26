@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.net.Uri;
 import android.os.Build;
 import android.os.FileObserver;
 import android.os.Handler;
@@ -23,6 +24,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -56,13 +58,21 @@ public final class OpenUrlWatcher {
     private FileObserver queueObserver;
     private ScheduledExecutorService queuePoller;
 
+    private static String redactUrl(String url) {
+        if (url == null || url.isEmpty()) return "";
+        int q = url.indexOf('?');
+        int h = url.indexOf('#');
+        int cut = (q >= 0 && h >= 0) ? Math.min(q, h) : (q >= 0 ? q : h);
+        return cut >= 0 ? url.substring(0, cut) : url;
+    }
+
     private final BroadcastReceiver openUrlReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent == null) return;
             String url = intent.getStringExtra("url");
             if (url != null && !url.trim().isEmpty()) {
-                Log.i(TAG, "broadcast ACTION_OPEN_URL received: " + url);
+                Log.i(TAG, "broadcast ACTION_OPEN_URL received: " + redactUrl(url));
                 dispatchIfValid(url);
             }
         }
@@ -86,7 +96,7 @@ public final class OpenUrlWatcher {
         try {
             IntentFilter filter = new IntentFilter("com.agy.ACTION_OPEN_URL");
             if (Build.VERSION.SDK_INT >= 33) {
-                appContext.registerReceiver(openUrlReceiver, filter, Context.RECEIVER_EXPORTED);
+                appContext.registerReceiver(openUrlReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
             } else {
                 appContext.registerReceiver(openUrlReceiver, filter);
             }
@@ -235,20 +245,67 @@ public final class OpenUrlWatcher {
                 return;
             }
         }
-        // Fallback: detect OAuth or login URLs emitted by language_server / openBrowser
-        if (line.contains("accounts.google.com") || line.contains("oauth2")
-                || (line.contains("/auth/callback") && line.contains("http"))) {
+        // Fallback: detect interactive Google OAuth login URLs emitted without an OPEN_URL prefix,
+        // while ignoring Go net/http error logs and machine-to-machine *.googleapis.com endpoints.
+        if (isGoHttpLogLine(line)) {
+            return;
+        }
+        if (line.contains("accounts.google.com/o/oauth2/") || line.contains("antigravity.google/")) {
             Matcher m = URL_PATTERN.matcher(line);
             while (m.find()) {
                 String candidate = m.group();
-                if (candidate.startsWith("http://") || candidate.startsWith("https://")) {
-                    if (candidate.contains("accounts.google.com") || candidate.contains("oauth2")
-                            || candidate.contains("auth")) {
-                        Log.i(TAG, "stream regex detected auth URL: " + candidate);
-                        dispatchIfValid(candidate);
-                    }
+                if (isInteractiveAuthFallbackUrl(candidate)) {
+                    Log.i(TAG, "stream regex detected auth URL: " + redactUrl(candidate));
+                    dispatchIfValid(candidate);
                 }
             }
+        }
+    }
+
+    private static boolean isGoHttpLogLine(String line) {
+        return line.contains("Get \"http")
+                || line.contains("Post \"http")
+                || line.contains("Head \"http")
+                || line.contains("http_helpers.go:")
+                || line.contains("cache.go:")
+                || line.contains("errorreport.go:")
+                || line.contains("error_parsing.go:")
+                || line.contains("rpcs_plugin_auth.go:");
+    }
+
+    private static boolean isInteractiveAuthFallbackUrl(String url) {
+        if (url == null || url.contains("client_id=mock-client")) {
+            return false;
+        }
+        try {
+            Uri uri = Uri.parse(url);
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            String path = uri.getPath();
+            if (scheme == null || host == null) {
+                return false;
+            }
+            if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
+                return false;
+            }
+            host = host.toLowerCase(Locale.US);
+            if (host.equals("googleapis.com") || host.endsWith(".googleapis.com")) {
+                return false;
+            }
+            if (path == null) {
+                path = "";
+            }
+            if ((host.equals("accounts.google.com") || host.endsWith(".accounts.google.com"))
+                    && path.startsWith("/o/oauth2/")) {
+                return true;
+            }
+            if ((host.equals("antigravity.google") || host.endsWith(".antigravity.google"))
+                    && path.contains("/auth")) {
+                return true;
+            }
+            return false;
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 
@@ -263,7 +320,7 @@ public final class OpenUrlWatcher {
         }
         lastDispatchedUrl = url;
         lastDispatchedTime = now;
-        Log.i(TAG, "dispatching external URL: " + url);
+        Log.i(TAG, "dispatching external URL: " + redactUrl(url));
         openUrl(url);
     }
 
@@ -276,7 +333,7 @@ public final class OpenUrlWatcher {
                         : appContext;
                 boolean opened = oauth.openInBrowser(target, url);
                 if (!opened) {
-                    Log.w(TAG, "no browser accepted the url: " + url);
+                    Log.w(TAG, "no browser accepted the url: " + redactUrl(url));
                 }
             }
         });

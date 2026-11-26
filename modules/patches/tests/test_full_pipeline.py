@@ -17,8 +17,8 @@ sys.path.insert(0, os.path.join(MODULES_ROOT, "core", "unpack"))
 import pipeline
 import extractor
 
-EXPECTED_FINAL_SHA = "9f0a7b6093813d6844cc6bbe05b30117c24553e54c5a27e911a2c84a3a39f5b9"
-EXPECTED_NO_GATES_SHA = "a5b7f9f0254f17b25c31616e38f27ce7643e2c2f9c5b04001107dd3f8a056bc5"
+EXPECTED_FINAL_SHA = "34736fe402c139f2b9a9936aa725c5afaac8913aea2d48c51d1fb5a94b5ab739"
+EXPECTED_NO_GATES_SHA = "996ed66f6d4db76ef16e9ec278902178bd1253b92c979bc9b3d848ac8566f0f5"
 
 class TestFullPipeline(unittest.TestCase):
     def setUp(self):

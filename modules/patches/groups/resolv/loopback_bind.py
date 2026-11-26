@@ -2,15 +2,14 @@
 loopback_bind.py - Retargets core listener and OAuth callback bind addresses:
 1. Core HTTPS server: localhost (9 bytes) -> 127.0.0.1 (9 bytes)
 2. OAuth listener: localhost:0 (11 bytes) -> 127.0.0.1:0 (11 bytes)
-3. OAuth callback URL: http://localhost:%d/auth/callback (33 bytes) -> http://127.0.0.1:%d/auth/callback (33 bytes)
-Prevents Chrome/system DNS lookup failures (NXDOMAIN) on Android for localhost.
+Note: OAuth callback URL (http://localhost:%d/auth/callback) is kept untouched
+so Google OAuth token exchange redirect_uri matches authorized client registration.
 """
 from typing import Tuple, Dict, Any, List, Union
 
 PAIRS = [
     (b"GEMINI.mdAGENTS.mdlocalhostPageToken", b"GEMINI.mdAGENTS.md127.0.0.1PageToken"),
-    (b"listPluginslocalhost:0", b"listPlugins127.0.0.1:0"),
-    (b"http://localhost:%d/auth/callback", b"http://127.0.0.1:%d/auth/callback")
+    (b"listPluginslocalhost:0", b"listPlugins127.0.0.1:0")
 ]
 EXPECTED_COUNT = len(PAIRS)
 

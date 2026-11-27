@@ -779,19 +779,20 @@ def patch_lexical_android_select_delete(content):
     if "window.__agySelectAllInEditor=" in content:
         return content
 
-    old_target = 'd=f.select(0,Ms(f)),Dt(Qw(d,f));return!0},0)'
+    old_target = 'function DLb(a){Sy(()=>Xr(CLb(a),aLb(a)),[a])};'
     new_target = (
-        'd=f.select(0,Ms(f)),Dt(Qw(d,f));return!0},0);'
+        'function DLb(a){Sy(()=>Xr(CLb(a),aLb(a)),[a])};'
         'if(typeof window!=="undefined")window.__agySelectAllInEditor=function(){try{'
         'var el=document.activeElement;'
         'var ed=el&&(el.__lexicalEditor||(el.closest&&el.closest(\'[contenteditable="true"]\')&&el.closest(\'[contenteditable="true"]\').__lexicalEditor));'
         'if(!ed){var bx=document.getElementById("antigravity.agentSidePanelInputBox");var ce=bx&&bx.querySelector(\'[contenteditable="true"]\');ed=ce&&ce.__lexicalEditor;}'
         'if(!ed)return!1;'
-        'ed.update(function(){var r=St();r.select(0,Ms(r));},{discrete:!0});'
-        'return!0;}catch(_){return!1;}}'
+        'ed.update(function(){var r=yt();r.select(0,Ms(r));},{discrete:!0});'
+        'return!0;}catch(_){return!1;}};'
     )
     content = must_replace(content, old_target, new_target, "lexical_expose_select_all_helper")
     return content
+
 
 
 def apply_application_tab_patch(content):

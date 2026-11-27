@@ -206,11 +206,13 @@ public class MainActivity extends Activity
 
     /** Keep the splash visible and replace it with a readable failure message. */
     public void showFatalError(String message) {
+        CoreRuntimeState.lastError = message;
         splash.showFatalError(message);
     }
 
     /** Retry re-runs install + start: stop the service, then start it again. */
     private void retryCore() {
+        CoreRuntimeState.lastError = null;
         splash.clearFatal();
         appLoaded = false;
         loadedGeneration = -1;

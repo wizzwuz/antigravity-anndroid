@@ -116,6 +116,13 @@ done
 
 if command -v node >/dev/null 2>&1; then
     printf 'node --check:\n'
+    if [ -f "$SCRIPT_DIR/main.js" ]; then
+        if node --check "$SCRIPT_DIR/main.js"; then
+            printf '  ok   main.js\n'
+        else
+            die "node --check failed: main.js"
+        fi
+    fi
     i=0
     while [ "$i" -lt "${#bundle_names[@]}" ]; do
         dest="$GEN_DIR/${bundle_names[$i]}"

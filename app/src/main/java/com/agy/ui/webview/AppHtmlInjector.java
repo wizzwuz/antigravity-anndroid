@@ -83,6 +83,7 @@ public final class AppHtmlInjector {
                     + "listSkills:function(){return _nb.listSkills();},"
                     + "listConversations:function(){return _nb.listConversations();},"
                     + "searchAllConversations:function(q){return _nb.searchAllConversationsAuth(_bt,String(q||''));},"
+                    + "getPendingCascadeId:function(){return _nb.getPendingCascadeId();},"
                     + "restartApp:function(){return _nb.restartAppAuth(_bt);},"
                     + "isNetworkConnected:function(){return _nb.isNetworkConnected();},"
                     + "getBackupStateJson:function(){return _nb.getBackupStateJson();},"
